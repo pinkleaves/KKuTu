@@ -1,0 +1,20 @@
+{
+	"server-name": "분홍끄투_서버",
+	"web": {
+		"enabled": false,
+		"cpu": 1
+	},
+	"game": {
+		"enabled": true,
+		"cpu": 4,
+		"inst": 2
+	},
+	"log": {
+		"enabled": true,
+		"infopath": "L://KKuTu_Pink//Log//%DATE%-info.log",
+		"exceptionpath": "L://KKuTu_Pink//Log//%DATE%-exception.log",
+		"datepattern": "YYYY-MM-DD",
+		"maxsize": 500000000,
+		"maxfile": 1000
+	}
+}
