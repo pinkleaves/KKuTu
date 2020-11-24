@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-
+const ClientVersion = '3.0.100';
 var Cluster = require("cluster");
 var File = require('fs');
 var WebSocket = require('ws');
@@ -44,7 +44,7 @@ var SID;
 var WDIC = {};
 var MAX_USERS = Const.KKUTU_MAX_SERVER;
 
-const DEVELOP = exports.DEVELOP = global.test || false;
+const DEVELOP = exports.DEVELOP = false;
 const GUEST_PERMISSION = exports.GUEST_PERMISSION = {
 	'create': true,
 	'enter': true,
@@ -58,7 +58,7 @@ const GUEST_PERMISSION = exports.GUEST_PERMISSION = {
 	'kickVote': true,
 	'wp': true
 };
-const ENABLE_ROUND_TIME = exports.ENABLE_ROUND_TIME = [ 3, 5, 10, 30, 60, 90, 120, 150, 300, 600 ];
+const ENABLE_ROUND_TIME = exports.ENABLE_ROUND_TIME = [ 3, 5, 10, 30, 60, 90, 120, 150 ];
 const ENABLE_FORM = exports.ENABLE_FORM = [ "S", "J" ];
 const MODE_LENGTH = exports.MODE_LENGTH = Const.GAME_TYPE.length;
 const PORT = process.env['KKUTU_PORT'];
@@ -76,7 +76,7 @@ function checkDoS(ses){
 	var now = new Date();
 	try{
 		if(DoS[ses]){
-			if(now.getTime() - DoS[ses] <= 1000){
+			if(now.getTime() - DoS[ses] <= 300){
 				K = true;
 				DoS[ses] = now.getTime();
 			}else{
@@ -93,7 +93,7 @@ function checkDoS(ses){
 	}
 	return K;
 }
-function processAdmin(id, value){
+function processAdmin(id, value, isManager){
 	var cmd, temp, i, j;
 	
 	value = value.replace(/^(#\w+\s+)?(.+)/, function(v, p1, p2){
@@ -101,6 +101,25 @@ function processAdmin(id, value){
 		return p2;
 	});
 	switch(cmd){
+		case "anotice":
+			if(isManager){
+				DIC[id].send('notice',{value:'이 명령어를 사용할 수 있는 권한이 없습니다.'});
+				return null;
+			}
+			for(i in WDIC){
+				WDIC[i].send('anotice', { value: value });
+				break;
+			}
+			return null;
+		case "wnotice":
+			for(i in WDIC){
+				WDIC[i].send('anotice', { value: value, noXSS: true });
+				break;
+			}
+			return null;
+		case "enotice":
+			KKuTu.publish('notice', { value: value, noXSS: true });
+			return null;
 		case "pin":
 			KKuTu.publish('pin', { value: value });
 			return null;
@@ -120,14 +139,46 @@ function processAdmin(id, value){
                 temp.socket.send('{"type":"error","code":987}');
                 temp.socket.close();
             }
-            return null;
+			return null;
+		case "ip":
+			try{
+				DIC[id].send('notice', { value: `${value}: ${DIC[value].socket.upgradeReq.headers['x-forwarded-for'].replace(':ffff','').replace('::ffff','')}` });
+			}catch(e){
+				DIC[id].send('notice', { value: `${value}님의 정보를 찾을 수 없습니다.` });
+			}
+			return null;
+		case "ipban":
+			try{
+				var target = value.split(",")[0];
+				if(Number(value.split(',')[1])<0) var date = -1;
+				else var date = Date.now() + parseInt(value.split(",")[1]) * 24 * 60 * 60 * 1000;
+				var reason = value.split(",")[2];
+				
+				if(!target) return null;
+				else if(!reason) return null;
+				else if(!date) return null;
+				var kdkd = value.split(",")[1];
+				MainDB.black_ip.insert([ 'ip', target ], [ 'black', reason ], [ 'blackt', date ]).on();
+				JLog.info(`BAN [${target}] temp banned (Time: ${kdkd} days)`);
+			}catch(e){
+
+			}
+			return null;
 		case "captcha":
+			if(isManager){
+				DIC[id].send('notice',{value:'이 명령어를 사용할 수 있는 권한이 없습니다.'});
+				return null;
+			}
 			var ss = CAPTCHA.GUEST;
 			CAPTCHA.GUEST = ss ? false : true;
 			var sta = ss ? '껐' : '켰';
 			DIC[id].send('notice', { value: `캡챠 기능을 ${sta}습니다.` });
 			return null;
 		case "max":
+			if(isManager){
+				DIC[id].send('notice',{value:'이 명령어를 사용할 수 있는 권한이 없습니다.'});
+				return null;
+			}
 			try{
 				var tq = value.split(",");
 				var mx = Number(tq[1]);
@@ -139,6 +190,10 @@ function processAdmin(id, value){
 			}
 			return null;
 		case "notice":
+			if(isManager){
+				DIC[id].send('notice',{value:'이 명령어를 사용할 수 있는 권한이 없습니다.'});
+				return null;
+			}
 			KKuTu.publish('notice', { value: value });
 			return null;
 		case "delroom":
@@ -158,9 +213,17 @@ function processAdmin(id, value){
 			}
 			return null;
 		case "yell":
+			if(isManager){
+				DIC[id].send('notice',{value:'이 명령어를 사용할 수 있는 권한이 없습니다.'});
+				return null;
+			}
 			KKuTu.publish('yell', { value: value });
 			return null;
 		case "palert":
+			if(isManager){
+				DIC[id].send('notice',{value:'이 명령어를 사용할 수 있는 권한이 없습니다.'});
+				return null;
+			}
 			KKuTu.publish('palert', { value: value });
 			return null;
 		case "kill":
@@ -189,6 +252,10 @@ function processAdmin(id, value){
 			}
 			return null;
 		case "dump":
+			if(isManager){
+				DIC[id].send('notice',{value:'이 명령어를 사용할 수 있는 권한이 없습니다.'});
+				return null;
+			}
 			if(DIC[id]) DIC[id].send('yell', { value: "This feature is not supported..." });
 			/*Heapdump.writeSnapshot("/home/kkutu_memdump_" + Date.now() + ".heapsnapshot", function(err){
 				if(err){
@@ -244,7 +311,7 @@ Cluster.on('message', function(worker, msg){
 	switch(msg.type){
 		case "admin":
 			if(DIC[msg.id] && DIC[msg.id].admin) processAdmin(msg.id, msg.value);
-			else if(DIC[msg.id] && GLOBAL.MGMTUSER.indexOf(msg.id)!=-1) processAdmin(msg.id, msg.value);
+			else if(DIC[msg.id] && GLOBAL.MGMTUSER.indexOf(msg.id)!=-1) processAdmin(msg.id, msg.value, true);
 			break;
 		case "tail-report":
 			if(temp = T_ROOM[msg.place]){
@@ -363,6 +430,9 @@ Cluster.on('message', function(worker, msg){
 				KKuTu.publish('nikc', { value: $nir.nickname, usr: $c.id });
 			});
 			break;
+		case "lvnotice":
+			KKuTu.publish('notice', { value: msg.value });
+			break;
 		default:
 			JLog.warn(`Unhandled IPC message type: ${msg.type}`);
 	}
@@ -417,7 +487,7 @@ exports.init = function(_SID, CHAN){
 					DIC[$c.id].socket.close();
 				}
 				if(DEVELOP && !Const.TESTER.includes($c.id)){
-					$c.sendError(500);
+					$c.socket.send(JSON.stringify({type:'alert',code:500}));
 					$c.socket.close();
 					return;
 				}
@@ -452,7 +522,10 @@ exports.init = function(_SID, CHAN){
 							}));
 						} else {
 							$c.passRecaptcha = true;
-							joinNewUser($c, false, false);
+							//joinNewUser($c, false, false);
+							$c.socket.send(JSON.stringify({
+								type: 'pf'
+							}));
 						}
 					} else {
 						if(ref.result == 444){
@@ -540,13 +613,14 @@ function joinNewUser($c, blacks, blk, dos){
 		KKuTu.publish('conn', {user: $c.getData()});
 
 		JLog.info("New user #" + $c.id);
+		$c.checkClientVersion();
 	}
 }
 
 KKuTu.onClientMessage = function ($c, msg) {
 	if (!msg) return;
 	
-	if ($c.passRecaptcha) {
+	if ($c.passRecaptcha && $c.passFingerprint) {
 		processClientRequest($c, msg);
 	} else {
 		if (msg.type === 'recaptcha') {
@@ -563,6 +637,13 @@ KKuTu.onClientMessage = function ($c, msg) {
 					$c.sendError(447);
 					$c.socket.close();
 				}
+			});
+		}
+		if(msg.type == 'pfingerprint') {
+			MainDB.users.update([ '_id', $c.id ]).set([ 'fingerprint', msg.data ]).on(function($done){
+				$c.passFingerprint = true;
+				joinNewUser($c, false, false);
+				processClientRequest($c,msg);
 			});
 		}
 	}
@@ -604,7 +685,7 @@ function processClientRequest($c, msg) {
 			}
 			msg.value = msg.value.substr(0, 400);
 			if ($c.admin || mgmt) {
-				if (!processAdmin($c.id, msg.value)) break;
+				if (!processAdmin($c.id, msg.value, mgmt)) break;
 			}
 			checkTailUser($c.id, $c.place, msg);
 			if (msg.whisper) {
@@ -697,7 +778,7 @@ function processClientRequest($c, msg) {
 					}
 				}
 				if (msg.mode < 0 || msg.mode >= MODE_LENGTH) stable = false;
-				if (msg.round < 1 || msg.round > 15) {
+				if (msg.round < 1 || msg.round > 10/*15*/) {
 					if(!$c.admin){
 						msg.code = 433;
 						stable = false;
@@ -761,7 +842,7 @@ function processClientRequest($c, msg) {
 			$c.renew();
 			break;
 		case 'dict':
-			$c.dict(msg.word, msg.lang);
+			$c.dict(msg.word, msg.lang, msg.mode);
 			break;
 		case 'kdn':
 			$c.kdn();
@@ -771,6 +852,51 @@ function processClientRequest($c, msg) {
 			break;
 		case 'event':
 			$c.evtStat();
+			break;
+		case 'ping':
+			$c.ping();
+			break;
+		case 'equip':
+			$c.reqEquip(msg.id, msg.isLeft);
+			break;
+		case 'box':
+			$c.reqBox();
+			break;
+		case 'cfView':
+			$c.cfView(msg.text, msg.level, msg.blend);
+			break;
+		case 'cfReward':
+			$c.cfReward(msg.tray);
+			break;
+		case 'cns':
+			$c.cnsItem(msg.id);
+			break;
+		case 'cnsall':
+			$c.cnsAll(msg.id);
+			break;
+		case 'receiveItem':
+			$c.receiveItem(msg.id);
+			break;
+		case 'getMission':
+			$c.getMission();
+			break;
+		case 'changeExp':
+			$c.changeExp(msg.value);
+			break;
+		case 'version':
+			$c.checkCallback(msg.value);
+			break;
+		case 'viewstat':
+			$c.viewstat();
+			break;
+		case 'applystat':
+			$c.applystat(msg.target, msg.value);
+			break;
+		case 'statreset':
+			$c.statreset();
+			break;
+		case 'hwak':
+			$c.hwak(msg.value);
 			break;
 		default:
 			break;
@@ -784,6 +910,11 @@ KKuTu.onClientClosed = function($c, code){
 	if($c.socket) $c.socket.removeAllListeners();
 	if($c.friends) narrateFriends($c.id, $c.friends, "off");
 	KKuTu.publish('disconn', { id: $c.id });
-
+	/*var MDB = require('../Web/db');
+	if(!$c.guest){
+		MDB.users.findOne([ '_id', $c.id ]).on(function($rst){
+			MDB.users.update([ '_id', $c.id ]).
+		});
+	}*/
 	JLog.alert("Exit #" + $c.id);
 };

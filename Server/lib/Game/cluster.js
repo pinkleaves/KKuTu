@@ -21,7 +21,9 @@ var Const = require('../const');
 var JLog = require('../sub/jjlog');
 var SID = Number(process.argv[2]);
 var CPU = Number(process.argv[3]); //require("os").cpus().length;
+var TEST = Number(process.argv[4]);
 var use_port = [2083, 2087, 2096, 8443];
+
 if(isNaN(SID)){
 	if(process.argv[2] == "test"){
 		global.test = true;
@@ -43,6 +45,10 @@ if(Cluster.isMaster){
 		chan = i + 1;
 		channels[chan] = Cluster.fork({ SERVER_NO_FORK: true, KKUTU_PORT: Const.MAIN_PORTS[SID] + 416 + i, CHANNEL: chan });
 		//channels[chan] = Cluster.fork({ SERVER_NO_FORK: true, KKUTU_PORT: use_port[i], CHANNEL: chan });
+		/*channels[chan].on('message', function(msg){
+			if(typeof msg === "object") msg = JSON.stringify(msg);
+			logger.info(msg);
+		});*/
 	}
 	Cluster.on('exit', function(w){
 		for(i in channels){
@@ -56,6 +62,7 @@ if(Cluster.isMaster){
 		channels[chan] = Cluster.fork({ SERVER_NO_FORK: true, KKUTU_PORT: Const.MAIN_PORTS[SID] + 416 + (chan - 1), CHANNEL: chan });
 	});
 	process.env['KKUTU_PORT'] = Const.MAIN_PORTS[SID];
+	process.env['TEST'] = TEST;
 	require("./master.js").init(SID.toString(), channels);
 }else{
 	require("./slave.js");

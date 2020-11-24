@@ -218,15 +218,13 @@ exports.turnEnd = function(){
 			target.game.score += score;
 		}
 	}
-	getAuto.call(my, my.game.char, my.game.subChar, 0).then(function(w){
-		my.byMaster('turnEnd', {
-			ok: false,
-			target: target ? target.id : null,
-			score: score,
-			hint: w
-		}, true);
-		my.game._rrt = setTimeout(my.roundReady, 3000);
-	});
+	my.byMaster('turnEnd', {
+		ok: false,
+		target: target ? target.id : null,
+		score: score,
+		hint: '',
+	}, true);
+	my.game._rrt = setTimeout(my.roundReady, 3000);
 	clearTimeout(my.game.robotTimer);
 };
 exports.submit = function(client, text){
@@ -276,6 +274,7 @@ exports.submit = function(client, text){
 				client.game.score += score;
 				ptext = text
 				client.publish('turnEnd', {
+					cs: client.game.score,
 					ok: true,
 					value: text,
 					mean: $doc.mean,
@@ -322,6 +321,7 @@ exports.submit = function(client, text){
 				client.game.score += score;
 				ptext = text
 				client.publish('turnEnd', {
+					cs: client.game.score,
 					ok: true,
 					value: text,
 					score: score,

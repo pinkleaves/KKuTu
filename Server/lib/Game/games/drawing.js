@@ -66,6 +66,7 @@ exports.roundReady = function(){
 			if(!my.game.done) return;
 			
 			// $ans가 null이면 골치아프다...
+			if(!$ans) $ans = { _id: 'undefined', mean: '' };
 			my.game.late = false;
 			my.game.answer = $ans || {};
 			my.game.done.push($ans._id);
@@ -152,6 +153,7 @@ exports.submit = function(client, text){
 		}
 		client.game.score += score;
 		client.publish('turnEnd', {
+			cs: client.game.score,
 			target: client.id,
 			ok: true,
 			value: text,

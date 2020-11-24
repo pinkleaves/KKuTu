@@ -45,6 +45,24 @@ exports.getTitle = function(){
 	}, 500);
 	return R;
 };
+function shuffle(array) {
+  var currentIndex = array.length, temporaryValue, randomIndex;
+
+  // While there remain elements to shuffle...
+  while (0 !== currentIndex) {
+
+    // Pick a remaining element...
+    randomIndex = Math.floor(Math.random() * currentIndex);
+    currentIndex -= 1;
+
+    // And swap it with the current element.
+    temporaryValue = array[currentIndex];
+    array[currentIndex] = array[randomIndex];
+    array[randomIndex] = temporaryValue;
+  }
+
+  return array;
+}
 exports.roundReady = function(){
 	var my = this;
 	var words = [];
@@ -57,7 +75,8 @@ exports.roundReady = function(){
 	my.game.roundTime = my.time * 1000;
 	if(my.game.round <= my.round){
 		DB.kkutu[my.rule.lang].find([ '_id', conf.reg ], [ 'hit', { $gte: 1 } ], conf.add).limit(1234).on(function($docs){
-			$docs.sort(function(a, b){ return Math.random() < 0.5; });
+			//$docs.sort(function(a, b){ return Math.random() < 0.5; });
+			$docs = shuffle($docs);
 			while(w = $docs.shift()){
 				words.push(w._id);
 				i = w._id.length;
@@ -132,6 +151,7 @@ exports.submit = function(client, text, data){
 			my.game.board = newBoard;
 			client.game.score += score;
 			client.publish('turnEnd', {
+				cs: client.game.score,
 				target: client.id,
 				value: text,
 				score: score
@@ -171,5 +191,6 @@ function getBoard(words, len){
 	
 	while(sl++ < len) str.push("　");
 	
-	return str.sort(function(){ return Math.random() < 0.5; }).join("");
+	//return str.sort(function(){ return Math.random() < 0.5; }).join("");
+	return shuffle(str).join("");
 }

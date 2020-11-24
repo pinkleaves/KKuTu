@@ -16,11 +16,13 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+const ClientVersion = '3.1.2';
 var GUEST_PERMISSION;
 var Cluster = require("cluster");
 var Const = require('../const');
 var Lizard = require('../sub/lizard');
 var GLOBAL = require('../sub/global.json');
+var ReqExp = require('../sub/reqexp');
 var JLog = require('../sub/jjlog');
 // 망할 셧다운제 var Ajae = require("../sub/ajae");
 var DB;
@@ -37,13 +39,68 @@ var prid;
 var ridch = false;
 var SLOW = 0;
 var DoS = {};
+var Hwak = {};
 const NUM_SLAVES = 4;
 const GUEST_IMAGE = "/img/kkutu/guest.png";
 const MAX_OKG = 18;
 const ALL_OKG = 288;
 const PER_OKG = 300000;
+const MAX_MISSION = 3;
 const hyogwa = [120, 125, 150, 190, 220, 260, 300, 340, 400, 500, 500];
-
+const MISSION_ALL = [
+	[ 'Enter', 1 ],
+	[ 'ClearALL', 4 ]
+];
+const MISSIONS = [
+	[ 'SearchDict', 1 ],
+	[ 'Access', [ 30, 60, 90 ] ],
+	[ 'CharFactory', [ 1, 3, 5 ] ],
+	[ 'ChangeDress', 1 ]
+	//[ 'PlayKSH', [ 1, 2, 3 ] ],
+	//[ 'PlayAllMode', [ 3, 5, 10 ] ]
+];
+function assignMission(){
+	var MISSION = [];
+	/*
+		무조건 성공: 0
+		쉬움: 1
+		보통: 2
+		어려움: 3
+		
+		a: 횟수 (or 시간)
+		b: 난이도
+		c: 보상 방식 0: EXP 1: MNY 2: ETC 3: EXP/MNY (Developing)
+	*/
+	var used = [];
+	MISSION.push({ name: MISSION_ALL[0][0], reward: 3, level: 0, goal: 1, success: false, now: 1 });
+	var NOW;
+	var Q;
+	var isNoLv;
+	while(true){
+		if(MISSION.length >= 5) break;
+		NOW = MISSIONS[Math.floor(Math.random()*MISSIONS.length)];
+		if(used.includes(NOW[0])) continue;
+		used.push(NOW[0]);
+		isNoLv = typeof NOW[1] == "number";
+		Q = Math.floor(Math.random()*3)+1;
+		MISSION.push({ name: NOW[0], reward: Math.floor(Math.random()*2), level: isNoLv?1:Q, goal: isNoLv?NOW[1]:NOW[1][Q-1], success: false, now: 0 });
+	}
+	//MISSION.push({ name: MISSION_ALL[1][0], reward: 3, level: 0, goal: 4, success: false, now: 0 });
+	return MISSION;
+}
+function levelBonus(level){
+var lvbonus = level>=2000?0:Math.floor(level/1);
+if(level>=1000) lvbonus+=level>=2000?0:Math.floor(((level-1000)*15));
+if(level>=1000&&level<2000) lvbonus+=36000;
+if(level>=1100&&level<2000) lvbonus+=36000;
+if(level>=1200&&level<2000) lvbonus+=36000*1.5;
+if(level>=1300&&level<2000) lvbonus+=36000;
+if(level>=1400&&level<2000) lvbonus+=36000*1.5;
+if(level>=1500&&level<2000) lvbonus+=36000*1.5;
+if(level>=1750&&level<2000) lvbonus+=36000;
+if(level>=1900&&level<2000) lvbonus+=72000;
+return lvbonus;
+}
 function checkDoS(ses){
 	var K = false;
 	var now = new Date();
@@ -154,12 +211,12 @@ exports.Robot = function(target, place, level){
 	
 	my.id = target + place + Math.floor(Math.random() * 1000000000);
 	my.robot = true;
-	my.game = {};
+	my.game = { ready: true };
+	my.Stats = true;
 	my.data = {};
 	my.place = place;
 	my.target = target;
 	my.equip = { robot: true };
-	
 	my.getData = function(){
 		return {
 			id: my.id,
@@ -170,9 +227,23 @@ exports.Robot = function(target, place, level){
 			target: target,
 			equip: my.equip,
 			level: my.level,
-			ready: true
+			ready: my.Stats,
 		};
 	};
+	my.setStat = function(key){
+		if(key == 0){
+			my.game.ready = false;
+			my.game.form = 'J';
+		}
+		if(key == 1){
+			my.game.ready = true;
+			my.game.form = 'J';
+		}
+		if(key == 2){
+			my.game.ready = true;
+			my.game.form = 'S';
+		}
+	}
 	my.setLevel = function(level){
 		my.level = level;
 		my.data.score = Math.pow(10, level + 2);
@@ -228,7 +299,7 @@ exports.WebServer = function(socket){
 		if(socket.readyState == 1) socket.send(JSON.stringify(r));
 	};
 	my.onWebServerMessage = function(msg){
-		try{ msg = JSON.parse(msg); }catch(e){ return; }
+		try{ msg = JSON.parse(msg); }catch(e){ JLog.toConsole(e.toString()); return; }
 		
 		switch(msg.type){
 			case 'seek':
@@ -236,6 +307,9 @@ exports.WebServer = function(socket){
 				break;
 			case 'narrate-friend':
 				exports.narrate(msg.list, 'friend', { id: msg.id, s: msg.s, stat: msg.stat });
+				break;
+			case 'anotice':
+				exports.publish('notice', { value: msg.value, noXSS: msg.noXSS });
 				break;
 			default:
 		}
@@ -286,6 +360,8 @@ exports.Client = function(socket, profile, sid){
 		my.ready = false;
 		my.game = {};
 		
+		my.accessLast = new Date().getTime();
+		
 		my.subPlace = 0;
 		my.error = false;
 		my.blocked = false;
@@ -317,7 +393,7 @@ exports.Client = function(socket, profile, sid){
 			};
 		}
 		socket.on('close', function(code){
-			if(ROOM[my.place]) ROOM[my.place].go(my);
+			if(ROOM[my.place]) ROOM[my.place].go(my, undefined, undefined, true);
 			if(my.subPlace) my.pracRoom.go(my);
 			exports.onClientClosed(my, code);
 		});
@@ -391,29 +467,32 @@ exports.Client = function(socket, profile, sid){
 		my.sendError = function(code, msg){
 			my.send('error', { code: code, message: msg });
 		};
-		my.publish = function(type, data, noBlock){
+		my.publish = function(type, data, noBlock, spamCheck){
 			var i;
 			var now = new Date(), st = now - my._pub;
 			if(type != 'kdn'){
-				if(st <= Const.SPAM_ADD_DELAY) my.spam++;
-				else if(st >= Const.SPAM_CLEAR_DELAY) my.spam = 0;
-				if(my.spam >= Const.SPAM_LIMIT){
-					if(!my.blocked) my.numSpam = 0;
-					my.blocked = true;
-				}
-				if(!noBlock){
-					my._pub = now;
-					if(my.blocked){
-						if(st < Const.BLOCKED_LENGTH){
-							if(++my.numSpam >= Const.KICK_BY_SPAM){
-								if(Cluster.isWorker) process.send({ type: "kick", target: my.id });
-								return my.socket.close();
-							}
-							return my.send('blocked');
-						}else my.blocked = false;
+				if((type == 'chat' && spamCheck) || type != 'chat'){
+					if(st <= Const.SPAM_ADD_DELAY) my.spam++;
+					else if(st >= Const.SPAM_CLEAR_DELAY) my.spam = 0;
+					if(my.spam >= Const.SPAM_LIMIT){
+						if(!my.blocked) my.numSpam = 0;
+						my.blocked = true;
+					}
+					if(!noBlock){
+						my._pub = now;
+						if(my.blocked){
+							if(st < Const.BLOCKED_LENGTH){
+								if(++my.numSpam >= Const.KICK_BY_SPAM){
+									if(Cluster.isWorker) process.send({ type: "kick", target: my.id });
+									return my.socket.close();
+								}
+								return spamCheck ? true : my.send('blocked');
+							}else my.blocked = false;
+						}
 					}
 				}
 			}
+			try{if(type == 'chat' && data.value == '') return;}catch(e){}
 			data.profile = my.profile;
 			if(my.subPlace && type != 'chat') my.send(type, data);
 			else for(i in DIC){
@@ -425,6 +504,7 @@ exports.Client = function(socket, profile, sid){
 			var GLOBAL = require('../sub/global.json');
 			var admincheck = GLOBAL.ADMIN.indexOf(my.id) != -1;
 			var mgmtcheck = GLOBAL.MGMTUSER.indexOf(my.id) != -1;
+			if(my.publish('chat', { value: '', notice: false }, undefined, true) == true) return my.send('blocked');
 			if(my.noChat) return my.send('chat', { notice: true, code: 443 });
 			if(!my.place) my.send('slow', { q: SLOW });
 			else if(my.place){
@@ -461,7 +541,8 @@ exports.Client = function(socket, profile, sid){
 			}
 			if(msg.toLowerCase() == '#clearchat' || msg.toLowerCase() == '#cleanchat' || msg.toLowerCase() == '#chatclear' || msg.toLowerCase() == '#chatclean'){
 				if(admincheck){
-					my.publish('chatclear', { error: false });
+					if(Cluster.isMaster) my.publish('chatclear', { error: false });
+					else if(Cluster.isWorker) exports.publish('chatclear', { error: false });
 					return;
 				}
 			}
@@ -557,7 +638,31 @@ exports.Client = function(socket, profile, sid){
 			my.publish('chat', { value: msg, notice: code ? true : false, code: code });
 		};
 		my.kdn = function(){
-			my.publish('kdn', { id: my.id });
+			//my.publish('kdn', { id: my.id });
+		};
+		my.hwak = function(msg){
+			if(my.guest) return;
+			if(!msg || msg.replace(/\s/g, '') == "") return;
+			msg = msg.substr(0, 200);
+			if(Cluster.isMaster){
+				DB.users.findOne([ '_id', my.id ]).on(function($hwak){
+					if(!$hwak) return;
+					if(!$hwak.fingerprint || $hwak.fingerprint == null || $hwak.fingerprint == undefined) return;
+					var fp = $hwak.fingerprint;
+					var Time = new Date().getTime();
+					var prev;
+					if(prev = Hwak[fp]){
+						if(Time - Number(prev) < 300000) return my.send('notice', { value: '확성기는 5분에 1회 사용 가능합니다.' });
+						else{
+							Hwak[fp] = Time;
+							exports.publish('hwak', { value: msg, sender: my.id });
+						}
+					}else{
+						Hwak[fp]=Time;
+						exports.publish('hwak', { value: msg, sender: my.id });
+					}
+				});
+			}
 		};
 		my.checkExpire = function(){
 			var now = new Date();
@@ -673,6 +778,19 @@ exports.Client = function(socket, profile, sid){
 				JLog.log(err.toString());
 			}
 		};
+		my.checkClientVersion = function(){
+			my.send('getVersion', { value: true });
+			setTimeout(function(){
+				if(my.hasOwnProperty('ClientVersion')){
+					if(my.ClientVersion != ClientVersion) return my.send('notice', { value: '적용되지 않은 클라이언트 패치/업데이트가 있습니다. Shift+F5를 클릭하여 재접속을 하시면 적용됩니다.' });
+				}else{
+					return my.send('notice', { value: '클라이언트 버전 정보를 확인할 수 없습니다. 정상적인 서비스 이용을 위해 가급적 재접속을 진행하여 주시기 바랍니다.' });
+				}
+			}, 3000);
+		};
+		my.checkCallback = function(ver){
+			my.ClientVersion = ver == 'SKKuTu' ? ClientVersion : ver;
+		};
 		my.refresh = function(){
 			var R = new Lizard.Tail();
 			var ip = my.socket.upgradeReq.headers['x-forwarded-for'];
@@ -682,10 +800,12 @@ exports.Client = function(socket, profile, sid){
 				return;
 			};
 			DB.black_ip.findOne([ 'ip', ip ]).on(function($gy){
-				if(!!$gy) {
-					my.sendError(999);
-					my.socket.close();
-					return;
+				if(!!$gy){
+					if(($gy.blackt && Number($gy.blackt) > Date.now()) || !$gy.blackt || $gy.blackt < 0){
+						my.socket.send(JSON.stringify({ type: 'alert', code: 999 }));
+						my.socket.close();
+						return;
+					}
 				}
 			});
 			if(my.guest){
@@ -735,11 +855,16 @@ exports.Client = function(socket, profile, sid){
 				if(!my.roomlast) my.roomlast = 1;
 				var pst;
 				var cdval = 30;
-				if(!first && $user.kkutu.score != 0 && ss){
+				if(!$user.accessTime) $user.accessTime = { date: jss, time: 0 };
+				if($user.accessTime.date != jss){
+					my.accessTime = 0;
+					$user.accessTime = { date: jss, time: 0 };
+				}
+				/*if(!first && $user.kkutu.score != 0 && ss){
 					var gwb = 0;
 					var k;
 					var q = 1;
-					if(jss == "2020716"){
+					/*if(jss == "2020716"){
 						gwb = 400000;
 						k = "box_ping";
 						if(!$user.box) $user.box = {};
@@ -752,23 +877,23 @@ exports.Client = function(socket, profile, sid){
 						my.send('notice', { value: '광복절 이벤트 보상으로 40만 경험치, 희귀 휘장 상자 1개, 핑 상자 1개가 지급되었습니다.' });
 					}
 					pst = Math.round(Math.random() * 10000) / 100;
-					if(pst >= 50) var ltat = { code: 673, exp: 1000 };
-					else if(pst < 50 && pst > 10) var ltat = { code: 674, exp: 5000 };
-					else if(pst <= 10 && pst > 1.75) var ltat = { code: 675, exp: 10000 };
-					else if(pst <= 1.75 && pst > 0.4) var ltat = { code: 676, exp: 50000 };
-					else if(pst <= 0.4 && pst > 0.03) var ltat = { code: 677, exp: 100000 };
-					else if(pst <= 0.03) var ltat = { code: 678, exp: 300000 };
+					if(pst >= 50) var ltat = { code: 673, exp: 2000 };
+					else if(pst < 50 && pst > 15) var ltat = { code: 674, exp: 10000 };
+					else if(pst <= 15 && pst > 2) var ltat = { code: 675, exp: 20000 };
+					else if(pst <= 2 && pst > 0.6) var ltat = { code: 676, exp: 50000 };
+					else if(pst <= 0.6 && pst > 0.1) var ltat = { code: 677, exp: 100000 };
+					else if(pst <= 0.1) var ltat = { code: 678, exp: 300000 };
 					else var ltat = { code: 673, exp: 1000 };
 					
 					//if(!black && ss) my.send('chat', { notice: true, code: weekend ? ltat.code + 12 : ltat.code + 6 });
 					
 					pst = Math.round(Math.random() * 10000) / 100;
-					if(pst >= 50) var stat = { code: 667, ping: 500 };
-					else if(pst < 50 && pst > 10) var stat = { code: 668, ping: 2000 };
-					else if(pst <= 10 && pst > 1.75) var stat = { code: 669, ping: 10000 };
-					else if(pst <= 1.75 && pst > 0.3) var stat = { code: 670, ping: 25000 };
-					else if(pst <= 0.3 && pst > 0.03) var stat = { code: 671, ping: 50000 };
-					else if(pst <= 0.03) var stat = { code: 672, ping: 100000 };
+					if(pst >= 50) var stat = { code: 667, ping: 1000 };
+					else if(pst < 50 && pst > 10) var stat = { code: 668, ping: 5000 };
+					else if(pst <= 15 && pst > 2) var stat = { code: 669, ping: 10000 };
+					else if(pst <= 2 && pst > 0.6) var stat = { code: 670, ping: 25000 };
+					else if(pst <= 0.6 && pst > 0.1) var stat = { code: 671, ping: 50000 };
+					else if(pst <= 0.1) var stat = { code: 672, ping: 100000 };
 					else var stat = { code: 667, ping: 1000 };
 					//if(!black && ss) my.send('chat', { notice: true, code: weekend ? stat.code + 6 : stat.code });
 					var wdu = false;
@@ -838,7 +963,7 @@ exports.Client = function(socket, profile, sid){
 					if(stat.ping >= 50000 && !weekend) exports.publish('notice', { value: knk });
 					if(stat.ping >= 100000 && weekend) exports.publish('notice', { value: knk });
 					
-				}
+				}*/
 				/* 망할 셧다운제
 				if(Cluster.isMaster && !my.isAjae){ // null일 수는 없다.
 					my.isAjae = Ajae.checkAjae(($user.birthday || "").split('-'));
@@ -854,11 +979,14 @@ exports.Client = function(socket, profile, sid){
 						}
 					}
 				}*/
+				if(my.accessTime) $user.accessTime.time = my.accessTime;
 				my.exordial = $user.exordial || "";
 				my.nickname = $user.nickname || "";
+				my.stat = $user.stat || {exp:0,mny:0};
 				my.enhance = $user.enhance || {};
 				my.equip = $user.equip || {};
 				my.box = $user.box || {};
+				my.accessTime = $user.accessTime.time;
 				my.data = new exports.Data($user.kkutu);
 				my.money = Number($user.money);
 				my.friends = $user.friends || {};
@@ -867,13 +995,227 @@ exports.Client = function(socket, profile, sid){
 					my.checkExpire();
 					my.okgCount = Math.floor((my.data.playTime || 0) / PER_OKG);
 				}
+				if(!my.guest){
+					DB.users.update([ '_id', my.id ]).set([ 'accessTime', $user.accessTime ]).on();
+					if(!$user.post){
+						$user.post = {};
+						DB.users.update([ '_id', my.id ]).set([ 'post', $user.post ]).on();
+					}
+					if(!$user.mission){
+						$user.mission = { mission: assignMission(), date: jss };
+						DB.users.update([ '_id', my.id ]).set([ 'mission', $user.mission ]).on();
+					}
+					if($user.mission.date != jss){
+						$user.mission = { date: jss, mission: assignMission() };
+						DB.users.update([ '_id', my.id ]).set([ 'mission', $user.mission ]).on();
+					}
+					var GOT = false;
+					var rewardArrived = '우편함에 보상 도착! 우측 상단의 <i class="fa fa-envelope"></i> 버튼을 클릭하여 보상을 확인해 보세요!';
+					if($user.mission && $user.mission.date == jss){
+						var M;
+						var PREV = {m:JSON.stringify($user.mission),p:JSON.stringify($user.post)};
+						for(i in $user.mission.mission){
+							M = $user.mission.mission[i];
+							if(M.name == 'Access'){
+								$user.mission.mission[i].now = Math.floor(my.accessTime/60000) >= M.goal ? M.goal : Math.floor(my.accessTime/60000);
+							}
+							if(M.goal <= M.now && !M.success){
+								$user.mission.mission[i].success = true;
+								if(M.name == 'Enter'){
+									for(C in $user.mission.mission){
+										if(C.name == 'ClearALL'){
+											$user.mission.mission[C].now = Number(C.now)+1;
+										}
+									}
+									GOT = true;
+									JLog.log(`[${my.id}] DailyMission Cleared`);
+									$user.post[new Date().getTime()+Math.floor(Math.random()*10000000000)] = { name: '일일 미션 보상', item: {exp:{amount:Math.ceil((Math.random()+1)*55*(levelBonus(ReqExp.getLevel(my.data.score))/1.3125))},mny:{amount:Math.floor(Math.random()*25000)+1}}};
+								}
+								if(M.name == 'Access'){
+									for(C in $user.mission.mission){
+										if(C.name == 'ClearALL'){
+											$user.mission.mission[C].now = Number(C.now)+1;
+										}
+									}
+									GOT = true;
+									$user.post[new Date().getTime()+Math.floor(Math.random()*10000000000)] = { name: '일일 미션 보상', item: M.reward == 0?{exp:{amount:Math.ceil((1+(M.level/6))*(Math.random()+1)*30*(levelBonus(ReqExp.getLevel(my.data.score))/1.3125)) }}:{mny:{amount:Math.floor(Math.random()*5000*(1+(M.level/6)))+1 }}};
+								}
+								if(M.name == 'CharFactory'){
+									for(C in $user.mission.mission){
+										if(C.name == 'ClearALL'){
+											$user.mission.mission[C].now = Number(C.now)+1;
+										}
+									}
+									GOT = true;
+									$user.post[new Date().getTime()+Math.floor(Math.random()*10000000000)] = { name: '일일 미션 보상', item: M.reward == 0?{exp:{amount:Math.ceil((Math.random()+1)*10*(levelBonus(ReqExp.getLevel(my.data.score))/1.3125)) }}:{mny:{amount:Math.floor(Math.random()*3000*(1+(M.level/6)))+1 }}};
+								}
+								if(M.name == 'ChangeDress'){
+									GOT = true;
+									for(C in $user.mission.mission){
+										if(C.name == 'ClearALL'){
+											$user.mission.mission[C].now = Number(C.now)+1;
+										}
+									}
+									$user.post[new Date().getTime()+Math.floor(Math.random()*10000000000)] = { name: '일일 미션 보상', item: M.reward == 0?{exp:{amount:Math.ceil((Math.random()+1)*10*(levelBonus(ReqExp.getLevel(my.data.score))/1.3125)) }}:{mny:{amount:Math.floor(Math.random()*3000)+1 }}};
+								}
+								if(M.name == 'SearchDict'){
+									for(C in $user.mission.mission){
+										if(C.name == 'ClearALL'){
+											$user.mission.mission[C].now = Number(C.now)+1;
+										}
+									}
+									GOT = true;
+									$user.post[new Date().getTime()+Math.floor(Math.random()*10000000000)] = { name: '일일 미션 보상', item: M.reward == 0?{exp:{amount:Math.ceil((Math.random()+1)*5*(levelBonus(ReqExp.getLevel(my.data.score))/1.3125)) }}:{mny:{amount:Math.floor(Math.random()*2000*(1+(M.level/6)))+1 }}};
+								}
+								if(M.name == 'DictPage'){
+									for(C in $user.mission.mission){
+										if(C.name == 'ClearALL'){
+											$user.mission.mission[C].now = Number(C.now)+1;
+										}
+									}
+									GOT = true;
+									$user.post[new Date().getTime()+Math.floor(Math.random()*10000000000)] = { name: '일일 미션 보상', item: M.reward == 0?{exp:{amount:Math.ceil((Math.random()+1)*10*(levelBonus(ReqExp.getLevel(my.data.score))/1.3125)) }}:{mny:{amount:Math.floor(Math.random()*2000*(1+(M.level/6)))+1 }}};
+								}
+								if(M.name == 'PlayAllMode'){
+									for(C in $user.mission.mission){
+										if(C.name == 'ClearALL'){
+											$user.mission.mission[C].now = Number(C.now)+1;
+										}
+									}
+									GOT = true;
+									$user.post[new Date().getTime()+Math.floor(Math.random()*10000000000)] = { name: '일일 미션 보상', item: M.reward == 0?{exp:{amount: Math.ceil((Math.random()+1+M.level)*10*(levelBonus(ReqExp.getLevel(my.data.score))/1.3125)) }}:{mny:{amount:Math.floor(Math.random()*2000*(1+(M.level/6)))+1 }}};
+								}
+							}
+						}
+						if(PREV.m != JSON.stringify($user.mission) || PREV.p != JSON.stringify($user.post)){
+							DB.users.update([ '_id', my.id ]).set([ 'post', $user.post ], [ 'mission', $user.mission ]).on();
+						}
+					}
+					if(ss){
+						$user.post[new Date().getTime()+Math.floor(Math.random()*10000000000)] = {
+							name: '강화 비용 지원', 
+							item: {mny:{amount:5000+Math.floor(Math.random()*15001)}}
+						};
+						if(jss == '202099'){
+							$user.post[new Date().getTime()+Math.floor(Math.random()*10000000000)] = {
+								name: '한글날 기념 보상', 
+								item: {mny:{amount:100900}}
+							};
+						}
+						GOT = true;
+						DB.users.update([ '_id', my.id ]).set([ 'post', $user.post ]).on();
+					}
+				}
+				var nW = new Date();
+				if(!my.guest){
+					if($user && $user.box && $user.hasOwnProperty('lvup') && $user.lvup != 1 && nW.getTime() < 1605538799000){
+						$user.box['box_lvSupport'] = {value:1,expire:1605538799};
+						DB.users.update([ '_id', my.id ]).set(
+							[ 'box', $user.box ],
+							[ 'lvup', 1 ]
+						).on();
+						my.send('notice', { value: '레벨업 지원 상자가 지급되었습니다. 아이템 보관함에서 사용 가능합니다.' });
+					}
+				}
+							
+				if(GOT) my.send('notice', { value: rewardArrived });
+				if(!my.guest) my.send('post', { data: $user.post, accessTime: $user.accessTime });
+				
 				if(black) R.go({ result: 444, black: black });
-				else if(Cluster.isMaster && $user.server) R.go({ result: 409, black: $user.server });
+				//else if(Cluster.isMaster && $user.server) R.go({ result: 409, black: $user.server });
 				else if(exports.NIGHT && my.isAjae === false) R.go({ result: 440 });
 				else R.go({ result: 200 });
 			});
 			return R;
 		};
+		my.viewstat = function(){
+			if(my.guest) return;
+			DB.users.findOne([ '_id', my.id ]).on(function($stat){
+				if(!$stat) return;
+				var Remain = renderStatusPoint($stat.kkutu.score);
+				var Current = 0;
+				if($stat.stat){
+					if($stat.stat.exp) Current += Number($stat.stat.exp);
+					if($stat.stat.mny) Current += Number($stat.stat.mny);
+					if(Current > Remain){
+						DB.users.update(['_id',my.id]).set(['stat',{exp:0,mny:0}]).on();
+						return my.send('notice', { value: '비 정상적인 시스템 이용이 감지되어 포인트가 초기화되었습니다.' });
+					}						
+				}
+				if(!$stat.stat){
+					$stat.stat = {exp:0,mny:0};
+					DB.users.update(['_id',my.id]).set(['stat',$stat.stat]).on();
+				}
+				my.stat = $stat.stat;
+				my.send('viewstat', { exp: $stat.stat.exp, mny: $stat.stat.mny, remain: Remain - Current });
+			});
+		};
+		my.applystat = function(target, value){
+			if(my.guest) return;
+			if(!target || !value) return;
+			DB.users.findOne([ '_id', my.id ]).on(function($stat){
+				if(!$stat) return;
+				var Remain = renderStatusPoint($stat.kkutu.score);
+				var Current = 0;
+				if($stat.stat){
+					if($stat.stat.exp) Current += Number($stat.stat.exp);
+					if($stat.stat.mny) Current += Number($stat.stat.mny);
+					if(Current > Remain){
+						var def = {exp:0,mny:0};
+						DB.users.update(['_id',my.id]).set([ 'stat', def ]).on();
+						return my.send('notice', { value: '비 정상적인 시스템 이용이 감지되어 포인트가 초기화되었습니다.' });
+					}
+				}
+				if(!$stat.stat) $stat.stat = {exp:0,mny:0};
+				if(Current == Remain) return my.send('notice', { value: '더 이상 사용할 수 있는 포인트가 없습니다.' });
+				if((Current + value) > Remain) return my.send('notice', { value: '포인트가 부족합니다.' });
+				if(target != "exp" && target != "mny") return;
+				$stat.stat[target] = Number($stat.stat[target]) + Number(value);
+				DB.users.update([ '_id', my.id ]).set([ 'stat', $stat.stat ]).on();
+				my.viewstat();
+			});
+		};
+		my.statreset = function(){
+			DB.users.update([ '_id', my.id ]).set([ 'stat', {exp:0,mny:0} ]).on();
+			my.viewstat();
+		};
+		function renderStatusPoint(exp){
+			var lv = ReqExp.getLevel(Number(exp));
+			if(lv<=1000) return 4 * lv;
+			else{
+				return 4000 + (10 * (lv - 1000));
+			}
+		}
+		my.getMission = function(){
+			DB.users.findOne([ '_id', my.id ]).on(function($me){
+				if($me) my.send('mission', { data: $me.mission || {} });
+			});
+		};
+		my.receiveItem = function(id){
+			DB.users.findOne([ '_id', my.id ]).on(function($post){
+				if(!$post) return;
+				if($post.post[id]){
+					var target = $post.post[id].item;
+					if(target.exp){
+						$post.kkutu.score = Number($post.kkutu.score) + (target.exp.amount || 0);
+						my.data.score = $post.kkutu.score;
+						my.send('notice', { value: '경험치를 획득했습니다: ' + commify(target.exp.amount) });
+					}
+					if(target.mny){
+						$post.money = Number($post.money) + (target.mny.amount || 0);
+						my.money = $post.money;
+						my.send('notice', { value: '핑을 획득했습니다: ' + commify(target.mny.amount) });
+					}
+				}
+				delete $post.post[id];
+				DB.users.update([ '_id', my.id ]).set(
+					[ 'kkutu', $post.kkutu ],
+					[ 'money', $post.money ],
+					[ 'post', $post.post ]
+				).on();
+				my.send('updateme', { kkutu: $post.kkutu, money: $post.money, post: $post.post });
+			});
+		}
 		my.flush = function(box, equip, friends){
 			var R = new Lizard.Tail();
 			
@@ -890,7 +1232,7 @@ exports.Client = function(socket, profile, sid){
 			).on(function(__res){
 				DB.redis.getGlobal(my.id).then(function(_res){
 					//분홍꽃 수정..
-					if(my.data.score >= 40110000){
+					if(ReqExp.getLevel(my.data.score) >= 2000){
 						DB.redis.remove(my.id).then(function(res){
 							JLog.log(`FLUSHED [${my.id}] DELETE / PTS=${my.data.score} MNY=${my.money} NICK=${my.nickname}`);
 							//R.go({ id: my.id, prev: _res })
@@ -976,6 +1318,10 @@ exports.Client = function(socket, profile, sid){
 						return my.sendError(429);
 					}
 				}
+				if($room.players.length < $room.limit && $room.opts && $room.opts.gameconn && spec){
+					// GC: undefined (미통과), 1 (통과, 게임중 연결), 2 (통과, 관전)
+					if(!room.gc) return my.send('error', { code: 915, target: $room.id });
+				}
 				if($room.players.indexOf(my.id) != -1){
 					return my.sendError(409);
 				}
@@ -1059,11 +1405,11 @@ exports.Client = function(socket, profile, sid){
 				}
 			}
 			if($room){
-				if(spec) $room.spectate(my, room.password);
+				if(spec) $room.spectate(my, room.password, room.gc);
 				else $room.come(my, room.password, pass);
 			}
 		};
-		my.leave = function(kickVote){
+		my.leave = function(kickVote, force){
 			var $room = ROOM[my.place];
 			
 			if(my.subPlace){
@@ -1072,7 +1418,7 @@ exports.Client = function(socket, profile, sid){
 				my.publish('user', my.getData());
 				if(!kickVote) return;
 			}
-			if($room) $room.go(my, kickVote);
+			if($room) $room.go(my, kickVote, force);
 		};
 		my.setForm = function(mode){
 			var $room = ROOM[my.place];
@@ -1152,6 +1498,7 @@ exports.Client = function(socket, profile, sid){
 			if(!$room) return;
 			if($room.master != my.id) return;
 			if($room.players.length < 1) return my.sendError(411);
+			if(Const.GAME_TYPE[$room.mode] == 'TAK') return my.send('palert', { value: '대화방에서는 게임을 시작할 수 없습니다.' });
 			
 			$room.ready();
 		};
@@ -1167,21 +1514,515 @@ exports.Client = function(socket, profile, sid){
 				}
 			});
 		}
-		my.dict = function(word, lang){
+		my.ping = function(){
+			my.renew();
+			my.send('ping', { a: '' });
+			my.accessTime += new Date().getTime() - my.accessLast;
+			my.accessLast = new Date().getTime();
+		}
+		my.dict = function(word, lang, mode){
 			var MainDB = DB.kkutu[lang];
-			
+			DB.users.findOne([ '_id', my.id ]).on(function($user){
+				if($user && $user.mission && $user.mission.mission){
+					var A;
+					var B;
+					for(A in $user.mission.mission){
+						B = $user.mission.mission[A];
+						if(B.name == 'SearchDict'){
+							if(!B.success){
+								$user.mission.mission[A].now = 1;
+								DB.users.update([ '_id', my.id ]).set([ 'mission', $user.mission ]).on();
+							}
+						}
+					}
+				}
+			});
 			if(!MainDB) return my.send('dict', { error: 400 });
 			if(!MainDB.findOne) return my.send('dict', { error: 400 });
 			MainDB.findOne([ '_id', word ]).on(function($word){
-				if(!$word) return my.send('dict', { error: 404 });
+				if(!$word) return my.send('dict', { error: 404, mode: mode || 1 });
 				my.send('dict', {
 					word: $word._id,
 					mean: $word.mean,
 					theme: $word.theme,
-					type: $word.type
+					type: $word.type,
+					mode: mode || 1,
+				});
+			});
+		};
+		my.cfView = function(text, level, blend){
+			my.send('cfR', getCFRewards(text, Number(level || 0), blend == "1"));
+		};
+		function blendWord(word){
+			var lang = parseLanguage(word);
+			var i, kl = [];
+			var kr = [];
+			
+			if(lang == "en") return String.fromCharCode(97 + Math.floor(Math.random() * 26));
+			if(lang == "ko"){
+				for(i=word.length-1; i>=0; i--){
+					var k = word.charCodeAt(i) - 0xAC00;
+					
+					kl.push([ Math.floor(k/28/21), Math.floor(k/28)%21, k%28 ]);
+				}
+				[0,1,2].sort((a, b) => (Math.random() < 0.5)).forEach((v, i) => {
+					kr.push(kl[v][i]);
+				});
+				return String.fromCharCode(((kr[0] * 21) + kr[1]) * 28 + kr[2] + 0xAC00);
+			}
+		}
+		function parseLanguage(word){
+			return word.match(/[a-zA-Z]/) ? "en" : "ko";
+		}
+		my.cnsItem = function(gid){
+			if(my.guest) return;
+			var uid = my.id;
+			var isDyn = gid.charAt() == '$';
+			var prev = ReqExp.getLevel(my.data.score);
+			
+			DB.users.findOne([ '_id', uid ]).on(function($user){
+				if(!$user) return my.send('cns', { error: 400 });
+				if(!$user.box) return my.send('cns', { error: 400 });
+				if(!$user.lastLogin) $user.lastLogin = new Date().getTime();
+				var q = $user.box[gid];
+				var output;
+				if(gid == 'dictPage'){
+					var naw = new Date();
+					var ndate = String(naw.getYear())+String(naw.getMonth())+String(naw.getDate());
+					if(!$user.dict) $user.dict = {date:ndate, count:0};
+					if($user.dict.date == ndate && $user.dict.count && $user.dict.count >= 1000) return my.send('palert', { value: '하루에 최대 1000개만 사용 가능합니다.' });
+					if($user.dict.date != ndate) $user.dict = { date: ndate, count: 0 };
+					$user.dict.count = Number($user.dict.count || 0) + 1;
+					my.send('notice', { value: '오늘 사용한 백과사전 낱장 개수: ' + $user.dict.count + ' / 1000' });
+				}
+				
+				if(!q) return my.send('cns', { error: 430 });
+				
+				DB.kkutu_shop.findOne([ '_id', isDyn ? gid.slice(0, 4) : gid ]).limit([ 'cost', true ]).on(function($item){
+					if(!$item) return my.send('cns', { error: 430 });
+					consume($user, gid, 1);
+					output = useItem($user, $item, gid);
+					my.data.score = $user.kkutu.score;
+					my.processLevelNotice(prev, ReqExp.getLevel($user.kkutu.score), my.nickname);
+					DB.users.update([ '_id', uid ]).set($user).on(function($res){
+						output.result = 200;
+						output.box = $user.box;
+						output.data = $user.kkutu;
+						output.mny = $user.money;
+						my.send('cns', output);
+					});
+				});
+			});
+		};
+		my.processLevelNotice = function(prev,now,nick){
+			var VAL = false;
+			if(prev <= 1099 && now >= 1100){
+				VAL = (nick || '(알 수 없음) ') + '님이 <font color="green">1100레벨</font>을 달성했습니다!';
+			}
+			if(prev <= 1199 && now >= 1200){
+				VAL = (nick || '(알 수 없음) ') + '님이 <font color="purple">1200레벨</font>을 달성했습니다!';
+			}
+			if(prev <= 1299 && now >= 1300){
+				VAL = (nick || '(알 수 없음) ') + '님이 <font color="purple">1300레벨</font>을 달성했습니다!';
+			}
+			if(prev <= 1399 && now >= 1400){
+				VAL = (nick || '(알 수 없음) ') + '님이 <font color="purple">1400레벨</font>을 달성했습니다!';
+			}
+			if(prev <= 1499 && now >= 1500){
+				VAL = (nick || '(알 수 없음) ') + '님이 <font color="navy">1500레벨</font>을 달성했습니다! 모두 축하해주세요!';
+			}
+			if(prev <= 1599 && now >= 1600){
+				VAL = (nick || '(알 수 없음) ') + '님이 <font color="navy">1600레벨</font>을 달성했습니다!';
+			}
+			if(prev <= 1699 && now >= 1700){
+				VAL = (nick || '(알 수 없음) ') + '님이 <font color="navy">1700레벨</font>을 달성했습니다!';
+			}
+			if(prev <= 1749 && now >= 1750){
+				VAL = (nick || '(알 수 없음) ') + '님이 <font color="navy">1750레벨</font>을 달성했습니다!';
+			}
+			if(prev <= 1799 && now >= 1800){
+				VAL = (nick || '(알 수 없음) ') + '님이 <font color="navy">1800레벨</font>을 달성했습니다!';
+			}
+			if(Cluster.isMaster){
+				if(VAL) exports.send('notice', { value: VAL });
+			}else if(Cluster.isWorker){
+				if(VAL) process.send({ type: 'lvnotice', value: VAL });
+			}
+		}
+		my.cnsAll = function(gid){
+			if(my.guest) return;
+			var uid = my.id;
+			// 1200, 1500, 1750, 1800, 1850, 1900, 1950, 1990~2000
+			var isDyn = gid.charAt() == '$';
+			if(gid != 'dictPage') return my.send('cns', { error: 400 });
+			if(my && my.data && my.data.score) var prev = ReqExp.getLevel(my.data.score);
+			DB.users.findOne([ '_id', uid ]).on(function($user){
+				if(!$user) return my.send('cns', { error: 400 });
+				if(!$user.box) return my.send('cns', { error: 400 });
+				if(!$user.lastLogin) $user.lastLogin = new Date().getTime();
+				var q = $user.box[gid];
+				var output;
+				if(!q) return my.send('cns', { error: 430 });
+				if(gid == 'dictPage'){
+					var naw = new Date();
+					var ndate = String(naw.getYear())+String(naw.getMonth())+String(naw.getDate());
+					if(!$user.dict) $user.dict = {date:ndate, count:0};
+					if($user.dict.date == ndate && $user.dict.count && $user.dict.count >= 1000) return my.send('palert', { value: '하루에 최대 1000개만 사용 가능합니다.' });
+					if($user.dict.date != ndate) $user.dict = { date: ndate, count: 0 };
+					q = (1000 - $user.dict.count)<q?1000-$user.dict.count:q;
+					$user.dict.count = Number($user.dict.count || 0) + q;
+					my.send('notice', { value: '오늘 사용한 백과사전 낱장 개수: ' + $user.dict.count + ' / 1000' });
+				}
+				DB.kkutu_shop.findOne([ '_id', isDyn ? gid.slice(0, 4) : gid ]).limit([ 'cost', true ]).on(function($item){
+					if(!$item) return my.send('cns', { error: 430 });
+					
+					for(var i=0; i<q; i++) consume($user, gid, 1);
+					output = useExp($user, $item, gid, q);
+					my.data.score = $user.kkutu.score;
+					my.processLevelNotice(prev, ReqExp.getLevel($user.kkutu.score), my.nickname);
+					DB.users.update([ '_id', uid ]).set($user).on(function($res){
+						output.result = 200;
+						output.box = $user.box;
+						output.data = $user.kkutu;
+						my.send('cns', output);
+					});
 				});
 			});
 		}
+		my.cfReward = function(tray){
+			if(my.guest) return my.send('cfV', { error: 400 });
+			var uid = my.id;
+			var tray = tray.split('|');
+			var i, o;
+			
+			if(tray.length < 1 || tray.length > 7) return my.send('cfV', { error: 400 });
+			DB.users.findOne([ '_id', uid ]).limit([ 'money', true ], [ 'box', true ], ['mission',true]).on(function($user){
+				if(!$user) return my.send('cfV', { error: 400 });
+				if(!$user.box) $user.box = {};
+				var req = {}, word = "", level = 0;
+				var cfr, gain = [];
+				var blend;
+				
+				for(i in tray){
+					word += tray[i].slice(4);
+					level += 68 - tray[i].charCodeAt(3);
+					req[tray[i]] = (req[tray[i]] || 0) + 1;
+					if(($user.box[tray[i]] || 0) < req[tray[i]]) return my.send('cfV', { error: 434 });
+				}
+				DB.kkutu[parseLanguage(word)].findOne([ '_id', word ]).on(function($dic){
+					if(!$dic){
+						if(word.length == 3){
+							blend = true;
+						}else return my.send('cfV', { error: 404 });
+					}
+					cfr = getCFRewards(word, level, blend);
+					if($user.money < cfr.cost) return my.send('cfV', { error: 407 });
+					for(i in req) consume($user, i, req[i]);
+					for(i in cfr.data){
+						o = cfr.data[i];
+						
+						if(Math.random() >= o.rate) continue;
+						if(o.key.charAt(4) == "?"){
+							o.key = o.key.slice(0, 4) + (blend ? blendWord(word) : word.charAt(Math.floor(Math.random() * word.length)));
+						}
+						obtain($user, o.key, o.value, o.term);
+						gain.push(o);
+					}
+					$user.money -= cfr.cost;
+					if($user && $user.mission && $user.mission.mission){
+						var A;
+						var B;
+						for(A in $user.mission.mission){
+							B = $user.mission.mission[A];
+							if(B.name == 'CharFactory'){
+								if(!B.success){
+									$user.mission.mission[A].now = Number(B.now)+1;
+									DB.users.update([ '_id', my.id ]).set([ 'mission', $user.mission ]).on();
+								}
+							}
+						}
+					}
+					DB.users.update([ '_id', uid ]).set([ 'money', $user.money ], [ 'box', $user.box ], [ 'mission', $user.mission ]).on(function($res){
+						my.send('cfV', { result: 200, box: $user.box, money: $user.money, gain: gain });
+					});
+				});
+			});
+		};
+		function getCFRewards(word, level, blend){
+			var R = [];
+			var f = {
+				len: word.length, // 최대 6
+				lev: level // 최대 18
+			};
+			var cost = 50 * f.lev;
+			var wur = f.len / 36; // 최대 2.867
+			// f.len / 36 -> 33
+			if(blend){
+				if(wur >= 0.5){
+					R.push({ key: "$WPA?", value: 1, rate: 1 });
+				}else if(wur >= 0.35){
+					R.push({ key: "$WPB?", value: 1, rate: 1 });
+				}else if(wur >= 0.05){
+					R.push({ key: "$WPC?", value: 1, rate: 1 });
+				}
+				cost = Math.round(cost * 0.2);
+			}else{
+				R.push({ key: "dictPage", value: f.len, rate: 1 });
+				R.push({ key: "boxB4", value: 1, rate: Math.min(1, f.lev / 3) });
+				if(f.lev >= 5){
+					R.push({ key: "boxB3", value: 1, rate: Math.min(1, f.lev / 10) });
+					cost += 20 * f.lev;
+					wur += f.lev / 20;
+				}
+				if(f.lev >= 10){
+					R.push({ key: "boxB2", value: 1, rate: Math.min(1, f.lev / 20) });
+					cost += 40 * f.lev;
+					wur += f.lev / 10;
+				}
+				if(wur >= 0.05){
+					if(wur > 1) R.push({ key: "$WPC?", value: Math.floor(wur), rate: 1 });
+					R.push({ key: "$WPC?", value: 1, rate: wur % 1 });
+				}
+				if(wur >= 0.35){
+					if(wur > 2) R.push({ key: "$WPB?", value: Math.floor(wur / 1.98), rate: 1 });
+					R.push({ key: "$WPB?", value: 1, rate: (wur / 1.9) % 1 });
+				}
+				if(wur >= 0.5){
+					R.push({ key: "$WPA?", value: 1, rate: wur / 2.3 });
+				}
+				if(wur >= 0.3){
+					R.push({ key: "exp_e", value: 1, rate: Math.min(1, f.lev / 210) });
+				}
+			}
+			return { data: R, cost: cost };
+		}
+		function consume($user, key, value, force){
+			var bd = $user.box[key];
+			
+			if(bd.value){
+				if((bd.value -= value) <= 0){
+					if(force || !bd.expire) delete $user.box[key];
+				}
+			}else{
+				if(($user.box[key] -= value) <= 0) delete $user.box[key];
+			}
+		}
+		function obtain($user, key, value, term, addValue){
+			var now = (new Date()).getTime();
+			if(term){
+				if($user.box[key]){
+					if(addValue) $user.box[key].value += value;
+					else $user.box[key].expire += term;
+				}else $user.box[key] = { value: value, expire: Math.round(now * 0.001 + term) }
+			}else{
+				$user.box[key] = ($user.box[key] || 0) + value;
+			}
+		}
+		function useExp($user, $item, gid, much){
+			var R = { gain: [] };
+			var zzs;
+			switch($item._id){
+				case 'dictPage':
+					JLog.log(much);
+					JLog.log(gid);
+					var epp = $user.kkutu.score;
+					for(var i=0; i<much; i++){
+						if(i==0) R.exp = 0;
+						zzs = Math.round(Math.sqrt(1 + 2 * (epp || 0))) * 2;
+						epp += zzs;
+						R.exp += zzs;
+					}
+					$user.kkutu.score += R.exp;
+					break;
+				default:
+					JLog.warn(`Unhandled consumption type: ${$item._id}`);
+			}
+			function got(key, value, term){
+				obtain($user, key, value, term);
+				R.gain.push({ key: key, value: value });
+			}
+			function pick(arr){
+				return arr[Math.floor(Math.random() * arr.length)];
+			}
+			return R;
+		}
+		function getLevel(score){
+			return ReqExp.getLevel(score);
+		}
+		function getLvup(exp){
+			return 0;
+		}
+		function useItem($user, $item, gid){
+			var R = { gain: [] };
+			
+			switch($item._id){
+				case 'exp_up':
+					var sq = getLvup($user.kkutu.score);
+					R.exp = sq;
+					$user.kkutu.score += R.exp;
+					break;
+				case 'boxB2':
+					got(pick([ 'b2_fire', 'b2_metal' ]), 1, 604800);
+					break;
+				case 'boxB3':
+					got(pick([ 'b3_do', 'b3_hwa', 'b3_pok' ]), 1, 604800);
+					break;
+				case 'boxB4':
+					got(pick([ 'b4_bb', 'b4_hongsi', 'b4_mint' ]), 1, 604800);
+					break;
+				case 'dictPage':
+					R.exp = Math.round(Math.sqrt(1 + 2 * ($user.kkutu.score || 0))) * 2;
+					$user.kkutu.score += R.exp;
+					break;
+				case 'exp_n':
+					R.exp = 200;
+					$user.kkutu.score += R.exp;
+					break;
+				case 'exp_r':
+					R.exp = 6000;
+					$user.kkutu.score += R.exp;
+					break;
+				case 'exp_cr':
+					R.exp = 14000;
+					$user.kkutu.score += R.exp;
+					break;
+				case 'exp_e':
+					R.exp = 80000;
+					$user.kkutu.score += R.exp;
+					break;
+				case 'exp_l':
+					R.exp = 200000;
+					$user.kkutu.score += R.exp;
+					break;
+				case 'exp_n3':
+					var rand = Math.floor(Math.random() * 10) + 1;
+					if(rand < 7){
+						R.exp = 300;
+						$user.kkutu.score += R.exp;
+					} else {
+						R.exp = 0;
+					}
+					break;
+				case '100up':
+					if(ReqExp.getLevel($user.kkutu.score) < 150){
+						R.exp = ReqExp.process()[148] - $user.kkutu.score;
+						$user.kkutu.score += R.exp;
+					}else{
+						R.exp = 0;
+						$user.kkutu.score += 0;
+					}
+					break;
+				case 'CDCoin':
+					MainDB.evt.findOne([ '_id', 'cday' ]).on(function($evt){
+						MainDB.evt.update([ '_id', 'cday' ]).set([ 'evtKey', Number($evt.evtKey) + 1 ]).on();
+						var uis = Number($evt.evtKey) + 1;
+						JLog.log(`[CDCoin] + 1 / Now: ${uis}`);
+					});
+					R.cde = 100;
+					break;
+				case 'box_ping':
+					R.money = Math.floor(Math.random() * 100000) + 100001;
+					$user.money = Number($user.money) + Number(R.money);
+					break;
+				case 'box_lvSupport':
+					var lev = ReqExp.getLevel($user.kkutu.score);
+					var support = getSupportEXP(lev);
+					R.exp = Math.ceil(Math.random()*(support.max-support.min))+support.min;
+					R.money = Math.floor(Math.random()*200001)+300000;
+					got(pick([ 'b2_fire', 'b2_metal' ]), 1, 86400*14);
+					got(pick([ 'b3_do', 'b3_hwa', 'b3_pok' ]), 1, 86400*21);
+					got(pick([ 'b4_bb', 'b4_hongsi', 'b4_mint' ]), 1, 86400*35);
+					got('exp100',1,3600*12);
+					delete $user.box['box_lvSupport'];
+					$user.kkutu.score = Number($user.kkutu.score) + Number(R.exp);
+					break;
+				default:
+					JLog.warn(`Unhandled consumption type: ${$item._id}`);
+			}
+			function got(key, value, term){
+				obtain($user, key, value, term);
+				R.gain.push({ key: key, value: value });
+			}
+			function pick(arr){
+				return arr[Math.floor(Math.random() * arr.length)];
+			}
+			return R;
+		};
+		function getSupportEXP(lv){
+			if(lv<1000) return {min:1000000,max:2500000};
+			if(lv<1100) return {min:175000000,max:250000000};
+			if(lv<1200) return {min:200000000,max:325000000};
+			if(lv<1300) return {min:500000000,max:750000000};
+			if(lv<1400) return {min:875000000,max:1250000000};
+			if(lv<1500) return {min:1750000000,max:2250000000};
+			if(lv<1600) return {min:4750000000,max:6000000000};
+			if(lv<1700) return {min:7500000000,max:11000000000};
+			if(lv<1800) return {min:17500000000,max:30000000000};
+			if(lv<1900) return {min:30000000000,max:40000000000};
+			if(lv<1950) return {min:75000000000,max:100000000000};
+			if(lv<1990) return {min:100000000000,max:125000000000};
+			if(lv<2000) return {min:125000000000,max:200000000000};
+			return {min:0,max:0};
+		}
+		my.reqBox = function(){
+			if(my.guest) return my.send('box', { error: 400 });
+			DB.users.findOne([ '_id', my.id ]).limit([ 'box', true ]).on(function($body){
+				if(!$body){
+					my.send('box', { error: 400 });
+				}else{
+					my.send('box', { box: $body.box });
+				}
+			});
+		};
+		my.reqEquip = function(id, isLeft){
+			if(my.guest) return my.send('equip', { error: 400 });
+			var uid = my.id;
+			var gid = id;
+			var now = Date.now() * 0.001;
+			
+			DB.users.findOne([ '_id', uid ]).limit([ 'box', true ], [ 'equip', true ], [ 'mission', true ]).on(function($user){
+				if(!$user) return my.send('equip', { error: 400 });
+				if(!$user.box) $user.box = {};
+				if(!$user.equip) $user.equip = {};
+				var q = $user.box[gid], r;
+				if($user && $user.mission && $user.mission.mission){
+					var A;
+					var B;
+					for(A in $user.mission.mission){
+						B = $user.mission.mission[A];
+						if(B.name == 'ChangeDress') $user.mission.mission[A].now = 1;
+					}
+				}
+				DB.kkutu_shop.findOne([ '_id', gid ]).limit([ 'group', true ]).on(function($item){
+					if(!$item) return my.send('equip', { error: 430 });
+					if(!Const.AVAIL_EQUIP.includes($item.group)) return my.send('equip', { error: 400 });
+					
+					var part = $item.group;
+					if(part.substr(0, 3) == "BDG") part = "BDG";
+					if(part == "Mhand") part = isLeft ? "Mlhand" : "Mrhand";
+					var qid = $user.equip[part];
+					
+					if(qid){
+						r = $user.box[qid];
+						if(r && r.expire){
+							obtain($user, qid, 1, r.expire, true);
+						}else{
+							obtain($user, qid, 1, now + $item.term, true);
+						}
+					}
+					if(qid == $item._id){
+						delete $user.equip[part];
+					}else{
+						if(!q) return my.send('equip', { error: 430 });
+						consume($user, gid, 1);
+						$user.equip[part] = $item._id;
+					}
+					DB.users.update([ '_id', uid ]).set([ 'mission', $user.mission ], [ 'box', $user.box ], [ 'equip', $user.equip ]).on(function($res){
+						my.send('equip', { result: 200, box: $user.box, equip: $user.equip });
+					});
+				});
+			});
+		};
 		my.practice = function(level){
 			var $room = ROOM[my.place];
 			var ud;
@@ -1190,6 +2031,7 @@ exports.Client = function(socket, profile, sid){
 			if(!$room) return;
 			if(my.subPlace) return;
 			if(my.form != "J") return;
+			if($room && Const.GAME_TYPE[$room.mode] == 'TAK') return my.send('palert', { value: '대화방에서는 연습을 할 수 없습니다.' });
 			
 			my.team = 0;
 			my.ready = false;
@@ -1224,6 +2066,44 @@ exports.Client = function(socket, profile, sid){
 				my.sendError(400);
 			}
 		};
+		function calculateMoneytoExp(lv, val){
+			var wlv = lv;
+			lv = wlv>=1000 ? lv/50 : lv/250;
+			if(wlv>=360) lv += 1;
+			if(wlv>=500) lv += 1;
+			if(wlv>=750) lv += 1;
+			if(wlv>=1000) lv += 20;
+			if(wlv>=1200) lv += 30;
+			if(wlv>=1500) lv += 30;
+			if(wlv>=1750) lv += 40;
+			if(wlv>=1900) lv += 50;
+			if(lv<1) lv = 1;
+			return Math.floor(Math.pow(lv,1.1)*val);
+		}
+		my.changeExp = function(amount){
+			if(my.guest) return;
+			if(isNaN(amount)) return;
+			amount = Math.floor(amount);
+			if(!amount || amount <= 0) return;
+			amount = Number(amount);
+			DB.users.findOne([ '_id', my.id ]).on(function($exp){
+				try{
+					if(!$exp) return my.send('notice', { value: '회원님의 정보를 찾을 수 없습니다. 잠시 후 다시 시도해 주세요.' });
+					if(!$exp.money || !$exp.kkutu) return my.send('notice', { value: '회원님의 정보를 찾을 수 없습니다. 잠시 후 다시 시도해 주세요.' });
+					if(Number($exp.money) < amount) return my.send('notice', { value: '핑이 부족합니다.' });
+					var obtainExp = calculateMoneytoExp(ReqExp.getLevel(Number($exp.kkutu.score)), amount);
+					$exp.kkutu.score = Number($exp.kkutu.score) + obtainExp;
+					$exp.money = Number($exp.money) - amount;
+					DB.users.update([ '_id', my.id ]).set([ 'kkutu', $exp.kkutu ], [ 'money', $exp.money ]).on(function($res){
+						my.send('notice', { value: '경험치를 획득했습니다: ' + commify(obtainExp) });
+						my.send('updateme', { kkutu: $exp.kkutu, money: $exp.money });
+					});
+				}catch(e){
+					JLog.toConsole(e.toString());
+					return my.send('notice', { value: '처리 중 오류가 발생하였습니다. 잠시 후 다시 시도해 주세요.' });
+				}
+			});
+		};	
 		my.applyEquipOptions = function(rw, wa, wu, mode){
 			var $obj;
 			var i, j;
@@ -1248,7 +2128,63 @@ exports.Client = function(socket, profile, sid){
 					rw._blog.push("q" + j + $obj.options[j]);
 				}
 			}*/
-			var i;
+			/*var ksm = hotime ? 5.5 : 2.55;
+			rw.score += rw._score * ksm;
+			rw.money += rw._money * ksm;
+			rw._blog.push("zgEXP" + ksm);
+			rw._blog.push("zgMNY" + ksm);*/
+			var level = ReqExp.getLevel(my.data.score || 0);
+			var lvbonus = level>=2000?0:Math.floor(level/5);
+			var pingbonus = level>=1000?2:0;
+			if(level>=1000) lvbonus+=level>=2000?0:Math.floor(((level-1000)/10)*125);
+			if(level>=1000&&level<2000) lvbonus+=3000;
+			if(aw) lvbonus /= 2;
+			JLog.log(`LvBonus [${my.id}] ${lvbonus/3}`);
+			var miBonus = (lvbonus/30) < 1 ? 1 : lvbonus/30;
+			var wfd = aw ? 16 : 32;
+			rw.score += rw._score * wfd;
+			rw.money += rw._money * wfd;
+			rw._blog.push("egEXP" + wfd);
+			rw._blog.push("egMNY" + wfd);
+			var nss = new Date();
+			var hotime = nss.getHours() == 12 || nss.getHours() == 22;
+			if(lvbonus>=2){
+				rw.score += rw._score * (lvbonus/3);
+				rw.money += rw._money * (pingbonus);
+				rw._blog.push("fgEXP" + (lvbonus/3));
+				rw._blog.push("fgMNY" + (pingbonus));
+			}
+			if(nss.getDay() == 6 || nss.getDay() == 0){
+				var jdd = 0.5 * ((lvbonus/3)/10);
+				rw.score += rw._score * jdd;
+				rw.money += rw._money * jdd;
+				rw._blog.push("jgEXP" + jdd);
+				rw._blog.push("jgMNY" + jdd);
+			}
+			if(hotime){
+				var uld = 1;
+				var qld = 1.2 * miBonus;
+				rw.score += rw._score * qld;
+				rw.money += rw._money * uld;
+				rw._blog.push("tgEXP" + qld);
+				rw._blog.push("tgMNY" + uld);
+			}
+			var rwScore = rw.score;
+			var rwMoney = rw.money;
+			// 여기서 아이템 보너스를 계산한다.
+			var current;
+			var Crent = 0;
+			if(my.stat){
+				if(my.stat.exp) Crent += Number(my.stat.exp);
+				if(my.stat.mny) Crent += Number(my.stat.mny);
+				var Crnt = renderStatusPoint(my.score);
+				if(Crent <= Crnt){
+					rw.score += (current = rwScore * (my.stat.exp*0.0005));
+					rw._blog.push("shEXP" + current);
+					rw.money += (current = rwMoney * (my.stat.mny*0.0005));
+					rw._blog.push("shMNY" + current);
+				}
+			}
 			for(aq in my.equip){
 				i = my.equip[aq];
 				if(!i) continue;
@@ -1266,9 +2202,9 @@ exports.Client = function(socket, profile, sid){
 			}
 			for(j in enhance){
 				if(!enhance[j] || enhance[j] <= 0) continue;
-				if(j == "gEXP") rw.score += rw._score * enhance[j];
-				else if(j == "gMNY") rw.money += rw._money * enhance[j];
-				rw._blog.push("l" + j + enhance[j]);
+				if(j == "gEXP") rw.score += (current = rwScore * enhance[j]);
+				else if(j == "gMNY") rw.money += (current = rwMoney * enhance[j]);
+				rw._blog.push("lh" + j.slice(1) + current);
 			}
 			for(i in my.equip){
 				$obj = SHOP[my.equip[i]];
@@ -1284,45 +2220,17 @@ exports.Client = function(socket, profile, sid){
 			}
 			for(j in equipbonus){
 				if(!equipbonus[j] || equipbonus[j] <= 0) continue;
-				if(j == "gEXP") rw.score += rw._score * equipbonus[j];
-				else if(j == "hEXP") rw.score += equipbonus[j];
-				else if(j == "gMNY") rw.money += rw._money * equipbonus[j];
-				else if(j == "hMNY") rw.money += equipbonus[j];
+				if(j == "gEXP") rw.score += (current=rwScore * equipbonus[j]);
+				else if(j == "hEXP") rw.score += (current = equipbonus[j]);
+				else if(j == "gMNY") rw.money += (current = rwMoney * equipbonus[j]);
+				else if(j == "hMNY") rw.money += (current = equipbonus[j]);
 				else continue;
-				rw._blog.push("q" + j + equipbonus[j]);
-			}
-			
-			var wfd = aw ? 4 : 8;
-			rw.score += rw._score * wfd;
-			rw.money += rw._money * wfd;
-			rw._blog.push("egEXP" + wfd);
-			rw._blog.push("egMNY" + wfd);
-			var nss = new Date();
-			var hotime = nss.getHours() == 12 || nss.getHours() == 22;
-			/*var ksm = hotime ? 5.5 : 2.55;
-			rw.score += rw._score * ksm;
-			rw.money += rw._money * ksm;
-			rw._blog.push("zgEXP" + ksm);
-			rw._blog.push("zgMNY" + ksm);*/
-			if(nss.getDay() == 6 || nss.getDay() == 0){
-				var jdd = 0.5;
-				rw.score += rw._score * jdd;
-				rw.money += rw._money * jdd;
-				rw._blog.push("jgEXP" + jdd);
-				rw._blog.push("jgMNY" + jdd);
-			}
-			if(hotime){
-				var uld = 1;
-				var qld = 1.2;
-				rw.score += rw._score * qld;
-				rw.money += rw._money * uld;
-				rw._blog.push("tgEXP" + qld);
-				rw._blog.push("tgMNY" + uld);
+				rw._blog.push("qh" + j.slice(1) + current);
 			}
 			if(rw.together){
 				var well = true;
-				var rdn = Math.floor(Math.random() * 80) + 1;	// 1~70사이의 난수 생성
-				rdn = rdn * 0.01;
+				var rdn = Math.floor(Math.random() * 100) + 1;	// 1~70사이의 난수 생성
+				rdn = rdn * 0.01 * miBonus;
 				var pex = rw._score;
 				if(pex < 1) well = false; // 경험치 / 91.5가 1보다 작으면 진행하지 않기.
 				if(well){
@@ -1331,29 +2239,13 @@ exports.Client = function(socket, profile, sid){
 				rw.score += pex;
 				rw._blog.push("rgEXP" + rdn);
 			}
-			if(rw.together && wa){
-				wb = 1;
-				
-				rw.score += rw._score * wb;
-				rw.money += rw._money * wb;
-				rw._blog.push("wgEXP" + wb);
-				rw._blog.push("wgMNY" + wb);
-			}
-			if(rw.together && wu){
-				wb = 0.2;
-				
-				rw.score += rw._score * wb;
-				rw.money += rw._money * wb;
-				rw._blog.push("ugEXP" + wb);
-				rw._blog.push("ugMNY" + wb);
-			}
 			if(rw.together && my.okgCount > 0 && !aw){
 				my.okgCount = my.okgCount > ALL_OKG ? ALL_OKG : my.okgCount;
 				if(my.okgCount > MAX_OKG){
-					i = 0.12 * (MAX_OKG + ((my.okgCount - MAX_OKG)/21));
+					i = 0.12 * (MAX_OKG + ((my.okgCount - MAX_OKG)/21)) * ((lvbonus/3)/60);
 					j = 0.12 * (MAX_OKG + ((my.okgCount - MAX_OKG)/21));
 				}else{
-					i = 0.12 * my.okgCount;
+					i = 0.12 * my.okgCount * ((lvbonus/3)/10);
 					j = 0.12 * my.okgCount;
 				}
 				
@@ -1364,10 +2256,10 @@ exports.Client = function(socket, profile, sid){
 			} else if(!rw.together && my.okgCount > 0 && !aw){
 				my.okgCount = my.okgCount > ALL_OKG ? ALL_OKG : my.okgCount;
 				if(my.okgCount > MAX_OKG){
-					i = 0.018 * (MAX_OKG + ((my.okgCount - MAX_OKG)/22));
+					i = 0.018 * (MAX_OKG + ((my.okgCount - MAX_OKG)/22)) * ((lvbonus/3)/60);
 					j = 0.018 * (MAX_OKG + ((my.okgCount - MAX_OKG)/22));
 				}else{
-					i = 0.018 * my.okgCount;
+					i = 0.018 * my.okgCount * ((lvbonus/3)/10);
 					j = 0.018 * my.okgCount;
 				}
 				
@@ -1376,8 +2268,49 @@ exports.Client = function(socket, profile, sid){
 				rw._blog.push("kgEXP" + i);
 				rw._blog.push("kgMNY" + j);
 			}
+			if(rw.together && wa){
+				var wb = 1;
+				
+				rw.score += (current = rw.score * wb);
+				rw.money += (current = rw.money * wb);
+				rw._blog.push("whEXP" + current);
+				rw._blog.push("whMNY" + current);
+			}
+			if(rw.together && wu){
+				var wb = 0.2;
+				
+				rw.score += (current=rw.score * wb);
+				rw.money += (current=rw.money * wb);
+				rw._blog.push("uhEXP" + current);
+				rw._blog.push("uhMNY" + current);
+			}
+			if(new Date().getTime() <= 1606143599000){
+				var wb = 0.5;
+				
+				rw.score += (current = rw.score * wb);
+				rw.money += (current = rw.money * wb);
+				rw._blog.push("whEXP" + current);
+				rw._blog.push("whMNY" + current);
+			}
 			rw.score = Math.round(rw.score);
 			rw.money = Math.round(rw.money);
+			/*if(rw.together && wa){
+				var wb = 1;
+				
+				rw.score += rw._score * wb * miBonus;
+				rw.money += rw._money * wb;
+				rw._blog.push("wgEXP" + wb);
+				rw._blog.push("wgMNY" + wb);
+			}
+			if(rw.together && wu){
+				var wb = 0.2;
+				
+				rw.score += rw._score * wb * miBonus;
+				rw.money += rw._money * wb;
+				rw._blog.push("ugEXP" + wb);
+				rw._blog.push("ugMNY" + wb);
+			}*/
+			
 		};
 		my.obtain = function(k, q, flush){
 			if(my.guest && k != "taegeuk") return;
@@ -1503,7 +2436,7 @@ exports.Room = function(room, channel){
 		my.players.push(new exports.Robot(null, my.id, 4));
 		my.export();
 	};
-	my.setAI = function(target, level, team){
+	my.setAI = function(target, level, team, status){
 		var i;
 		
 		for(i in my.players){
@@ -1512,6 +2445,7 @@ exports.Room = function(room, channel){
 			if(my.players[i].id == target){
 				my.players[i].setLevel(level);
 				my.players[i].setTeam(team);
+				my.players[i].setStat(status);
 				my.export();
 				return true;
 			}
@@ -1546,33 +2480,62 @@ exports.Room = function(room, channel){
 			client.ready = false;
 			client.team = 0;
 			client.cameWhenGaming = false;
+			client.useGC = false;
 			client.form = "J";
 			
 			if(!my.practice) process.send({ type: "room-come", target: client.id, id: my.id });
 			my.export(client.id);
 		}
 	};
-	my.spectate = function(client, password){
+	my.spectate = function(client, password, gc){
 		if(!my.practice) client.place = my.id;
+		if(!my.gaming) return;
 		var len = my.players.push(client.id);
-		
+		if(!gc) gc = 2;
+		var goDuring = len <= my.limit && my.opts.gameconn && gc == 1;
+
 		if(Cluster.isWorker){
+			client.send('roundReady', {
+				round: my.game.round,
+				char: my.game.char,
+				subChar: my.game.subChar,
+				mission: my.game.mission,
+				during: true
+			});
+			client.send('turnStart', {
+				turn: my.game.turn,
+				char: my.game.char,
+				subChar: my.game.subChar,
+				speed: my.getTurnSpeed(my.game.roundTime),
+				roundTime: my.game.roundTime,
+				turnTime: my.game.turnTime,
+				mission: my.game.mission,
+				wordLength: my.game.wordLength,
+				seq: undefined
+			});
 			client.ready = false;
 			client.team = 0;
 			client.cameWhenGaming = true;
-			client.form = (len > my.limit) ? "O" : "S";
-			
-			process.send({ type: "room-spectate", target: client.id, id: my.id, pw: password });
-			my.export(client.id, false, true);
+			client.game.score = 0;
+			client.form = (len > my.limit) ? "O" : (goDuring ? "J" : "S");
+			client.useGC = goDuring;
+			process.send({ type: goDuring ? "room-come" : "room-spectate", target: client.id, id: my.id, pw: password });
+			if(goDuring){
+				my.game.seq.push(client.id);
+				my.export(client.id);
+			}else my.export(client.id, false, true);
 		}
 	};
-	my.go = function(client, kickVote){
+	my.go = function(client, kickVote, force, wait){
 		var x = my.players.indexOf(client.id);
+		var reconn = false;//my.opts.atreconn && !force;
+		var force = true;
 		var me;
-		
 		if(x == -1){
 			client.place = 0;
+			/*if(my.players.length < 1) */
 			if(my.players.length < 1) delete ROOM[my.id];
+			//setTimeout(function(){if(my.players.length < 1) delete ROOM[my.id];}, force ? 0 : 5000);
 			return client.sendError(409);
 		}
 		my.players.splice(x, 1);
@@ -1663,6 +2626,7 @@ exports.Room = function(room, channel){
 			if(teams[0].length){
 				if(teams[1].length > 1 || teams[2].length > 1 || teams[3].length > 1 || teams[4].length > 1) return 418;
 			}else{
+				if(my.opts.gameconn) return 418;
 				for(i=1; i<5; i++){
 					if(j = teams[i].length){
 						if(t){
@@ -1697,7 +2661,12 @@ exports.Room = function(room, channel){
 		
 		for(i in my.players){
 			if(my.players[i].robot){
-				len++;
+				if(!my.players[i].game.ready){
+					len++;
+					all = false;
+					break;
+				}
+				if(my.players[i].game.form != "S") len++;
 				teams[my.players[i].game.team].push(my.players[i]);
 				continue;
 			}
@@ -1729,6 +2698,7 @@ exports.Room = function(room, channel){
 		my.game.late = true;
 		my.game.round = 0;
 		my.game.turn = 0;
+		my.allWords = false;
 		my.game.seq = [];
 		my.game.robots = [];
 		if(my.practice){
@@ -1737,6 +2707,7 @@ exports.Room = function(room, channel){
 		}else{
 			for(i in my.players){
 				if(my.players[i].robot){
+					if(my.players[i].game.form == "S") continue;
 					my.game.robots.push(my.players[i]);
 				}else{
 					if(!(o = DIC[my.players[i]])) continue;
@@ -1822,10 +2793,15 @@ exports.Room = function(room, channel){
 				}
 				o.setForm("J");
 			}
+			if(o.useGC){
+				o.useGC = false;
+				continue;
+			}
 		}
 		for(i in my.game.seq){
 			o = DIC[my.game.seq[i]] || my.game.seq[i];
 			if(!o) continue;
+			if(o.useGC) continue;
 			if(o.robot){
 				if(o.game.team) teams[o.game.team].push(o.game.score);
 			}else if(o.team) teams[o.team].push(o.game.score);
@@ -1834,6 +2810,7 @@ exports.Room = function(room, channel){
 		for(i in my.game.seq){
 			o = DIC[my.game.seq[i]];
 			if(!o) continue;
+			if(o.useGC) continue;
 			sumScore += o.game.score;
 			res.push({ id: o.id, score: o.team ? teams[o.team][1] : o.game.score, dim: o.team ? teams[o.team][0] : 1 });
 		}
@@ -1842,15 +2819,21 @@ exports.Room = function(room, channel){
 		var isgr = false;
 		var iswu = false;
 		var GLOBAL = require('../sub/global.json');
-		for(i in res){
-			if(GLOBAL.ADMIN.indexOf(res[i].id)!=-1) isgr = true;
-			if(GLOBAL.WORDUSER.indexOf(res[i].id)!=-1 || GLOBAL.DESIGN.indexOf(res[i].id)!=-1) iswu = true;
+		var G;
+		for(i in my.players){
+			try{
+				G = DIC[my.players[i]];
+				if(GLOBAL.ADMIN.indexOf(G.id)!=-1) isgr = true;
+				if(GLOBAL.WORDUSER.indexOf(G.id)!=-1 || GLOBAL.DESIGN.indexOf(G.id)!=-1) iswu = true;
+			}catch(e){}
 		}
 		if(isgr && iswu) iswu = false;
 		var timing = 0;
 		var get = 0;
+		var prev = 2000;
 		for(i in res){
 			o = DIC[res[i].id];
+			if(o.useGC) continue;
 			if(pv == res[i].score){
 				res[i].rank = res[Number(i) - 1].rank;
 			}else{
@@ -1858,14 +2841,14 @@ exports.Room = function(room, channel){
 			}
 			pv = res[i].score;
 			var adminch = GLOBAL.ADMIN.indexOf(o.id) != -1;
-			rw = getRewards(my.mode, o.game.score / res[i].dim, o.game.bonus, res[i].rank, rl, sumScore, my.opts, adminch);
+			rw = getRewards(my.mode, o.game.score / res[i].dim, o.game.bonus, res[i].rank, rl, sumScore, my.opts, adminch, res.length);
 			rw.playTime = now - o.playAt;
 			o.applyEquipOptions(rw, isgr, iswu, Const.GAME_TYPE[my.mode]); // 착용 아이템 보너스 적용
 			if(my.opts.hack){
 				rw.score = 0;
 				rw.money = 0;
 			}
-			if(o.data.score >= 50000000) rw.score = Math.round(rw.score * (2 / 3));
+			if(ReqExp.getLevel(o.data.score) >= 2000) rw.score = 0; //임시 처리.
 			if(o.game.wpc) o.game.wpc.forEach(function(item){ o.obtain("$WPC" + item, 1); }); // 글자 조각 획득 처리
 			if(o.game.wpb) o.game.wpb.forEach(function(item){ o.obtain("$WPB" + item, 1); }); // 글자 조각 획득 처리
 			if(o.game.wpa) o.game.wpa.forEach(function(item){ o.obtain("$WPA" + item, 1); }); // 글자 조각 획득 처리
@@ -1896,22 +2879,22 @@ exports.Room = function(room, channel){
 			if(!my.opts.hack){
 				if(rw.together){
 					o.onOKG(rw.playTime);
-				}else{
-					if(o.game.score < 7 && Const.GAME_TYPE[my.mode].substr(1, 2) == 'TY'){
-						o.send('notice', { value: '어뷰징 행위가 의심되어 오끄감 버프가 지급되지 않았습니다.' });
-					}else o.onOKG(rw.playTime);
 				}
 			}
 			res[i].reward = rw;
+			prev = ReqExp.getLevel(o.data.score);
+			//if(isgr && rw.together) rw.score += rw.score;
+			//if(iswu && rw.together) rw.score += Math.floor(rw.score * 0.2);
 			o.data.score += rw.score || 0;
 			o.money += rw.money || 0;
+			o.processLevelNotice(prev, ReqExp.getLevel(o.data.score), o.nickname || '(알 수 없음)');
 			if(!my.opts.hack){
 				o.data.record[Const.GAME_TYPE[my.mode]][2] += rw.score || 0;
 				o.data.record[Const.GAME_TYPE[my.mode]][3] += rw.playTime;
-			}
-			if(!my.practice && rw.together){
-				o.data.record[Const.GAME_TYPE[my.mode]][0]++;
-				if(res[i].rank == 0) o.data.record[Const.GAME_TYPE[my.mode]][1]++;
+				if(!my.practice && rw.together){
+					o.data.record[Const.GAME_TYPE[my.mode]][0]++;
+					if(res[i].rank == 0) o.data.record[Const.GAME_TYPE[my.mode]][1]++;
+				}
 			}
 			users[o.id] = o.getData();
 			
@@ -1933,7 +2916,7 @@ exports.Room = function(room, channel){
 					
 					o[ranks[i].target].list = ranks[i].data;
 				}
-				my.byMaster('roundEnd', { result: res, users: users, ranks: o, data: data }, true);
+				my.byMaster('roundEnd', { result: res, users: users, ranks: o, data: data, isGM: isgr }, true);
 			});
 		});
 		my.gaming = false;
@@ -2083,108 +3066,114 @@ function shuffle(arr){
 	
 	return r;
 }
-function getRewards(mode, score, bonus, rank, all, ss, opts, admin){
+function getRewards(mode, score, bonus, rank, all, ss, opts, admin, sUser){
 	var rw = { score: 0, money: 0 };
 	var sr = score / ss;
 	
 	// all은 1~8
 	// rank는 0~7
+	if(score >= 10000){
+		score = 10000 + Math.floor((score-10000)/2);
+	}
+	if(score >= 20000){
+		score = 20000 + Math.floor((score-20000)/2);
+	}
 	switch(Const.GAME_TYPE[mode]){
 		case "EKT":
-			rw.score += score * 0.9;
+			rw.score += score * 1.325;
 			break;
 		case "ESH":
-			rw.score += score * 0.8;
+			rw.score += score * 1.3;
 			break;
 		case "KKT":
-			rw.score += score * 1.1;
+			rw.score += score * 1.375;
 			break;
 		case "KSH":
-			rw.score += score * 0.77;
+			rw.score += score * 1.35;
 			break;
 		case "CSQ":
-			rw.score += score * 0.4 * 2.7;
+			rw.score += score * 1.2;
 			break;
 		case 'KCW':
-			rw.score += score * 1.0;
+			rw.score += score * 1.25;
 			break;
 		case 'KTY':
-			rw.score += score * 0.3;
-			break;
-		case 'ETY':
-			rw.score += score * 0.37;
-			break;
-		case 'KAP':
-			rw.score += score * 0.8;
-			break;
-		case 'HUN':
 			rw.score += score * 0.5;
 			break;
-		case 'KDA':
-			rw.score += score * 0.67 * 1.2;
+		case 'ETY':
+			rw.score += score * 0.4;
 			break;
-		case 'EDA':
-			rw.score += score * 0.65 * 1.2;
+		case 'KAP':
+			rw.score += score * 1.3;
 			break;
-		case 'KSS':
-			rw.score += score * 2;
-			break;
-		case 'ESS':
-			rw.score += score * 1.5;
-			break;
-		case 'KAD':
-			rw.score += score * 0.33;
-			break;
-		case 'EAD':
-			rw.score += score * 0.32;
-			break;
-		case 'EAW':
-			rw.score += score * 0.2;
-			break;
-		case 'KAW':
-			rw.score += score * 0.2;
-			break;
-		case 'KMT':
+		case 'HUN':
 			rw.score += score * 0.9;
 			break;
+		case 'KDA':
+			rw.score += score * 0.95;
+			break;
+		case 'EDA':
+			rw.score += score * 0.9;
+			break;
+		case 'KSS':
+			rw.score += score * 1.225;
+			break;
+		case 'ESS':
+			rw.score += score * 0.9;
+			break;
+		case 'KAD':
+			rw.score += score * 0.9;
+			break;
+		case 'EAD':
+			rw.score += score * 0.85;
+			break;
+		case 'EAW':
+			rw.score += score * 0.3;
+			break;
+		case 'KAW':
+			rw.score += score * 0.3;
+			break;
+		case 'KMT':
+			rw.score += score * 1.35;
+			break;
 		case 'KEA':
-			rw.score += score * 0.32;
+			rw.score += score * 1;
 			break;
 		case 'EKD':
-			rw.score += score * 1.4;
+			rw.score += score * 1.35;
 			break;
 		case 'KDG':
-			rw.score += score * 0.35;
+			rw.score += score * 0.01;
 			break;
 		case 'EDG':
-			rw.score += score * 0.35;
+			rw.score += score * 0.01;
 			break;
 		case 'EAP':
-			rw.score += score * 0.78;
+			rw.score += score * 1.3;
 			break;
 		case 'EJH':
-			rw.score += score * 0.34;
+			rw.score += score * 0.4;
 			break;
 		case 'KJH':
-			rw.score += score * 0.33;
+			rw.score += score * 0.4;
 			break;
 		case 'KGT':
 			rw.score += score * 1.4;
 			break;
 		case 'KTT':
-			rw.score += score * 0.74;
+			rw.score += score * 0.7;
 			break;
 		case 'ETT':
-			rw.score += score * 0.65;
+			rw.score += score * 0.5;
 			break;
 		default:
 			break;
 	}
 	if(opts.return){
-		rw.score = rw.score * 0.33;
+		rw.score = rw.score * 0.25;
 	}
 	if(opts.spacewd){
-		rw.score = rw.score * 0.9;
+		rw.score = rw.score * 0.8;
 	}
 	if(opts.dongsa){
 		rw.score = rw.score * 0.8;
@@ -2192,24 +3181,32 @@ function getRewards(mode, score, bonus, rank, all, ss, opts, admin){
 	if(opts.scboost){
 		rw.score = rw.score * 0.000000009;
 	}
-	if(opts.faster) rw.score = rw.score * 0.2;
-	if(opts.rightgo) rw.score = rw.score * 0.0075;
+	
+	if(opts.faster) rw.score = rw.score * 0.4;
+	if(opts.rightgo) rw.score = rw.score * 0.3;
 	md = Const.GAME_TYPE[mode];
 	var srsr = 1;
 	if(md == 'KAW' || md == 'EAW' || md == "KJH" || md == "EJH"){
-		if(opts.mission) rw.score = rw.score * 0.043;
+		if(opts.mission) rw.score = rw.score * 0.09;
 	}
-	rw.score = rw.score * 1.525;
+	if(md.charAt() == 'K' && md != 'KEA'){
+		if(opts.mission) rw.score = rw.score * 0.85;
+	}
+	if(md.charAt() == 'E' || md == 'KEA'){
+		if(opts.mission) rw.score = rw.score * 0.8;
+	}
+	rw.score = rw.score * 4;
 	var jcb = 1.25 / (1 + 1.25 * sr * sr);
 	if(jcb < 0.94) jcb = 0.94;
+	if(sUser != all) jcb = 0.94;
 	rw.score = rw.score
 		* (0.77 + 0.05 * (all - rank) * (all - rank)) // 순위
 		* jcb // 점차비(양학했을 수록 ↓)
 	;
 	rw.money = 1 + rw.score * 0.01 * 6; // 핑 2배
 	if(all < 2){
-		rw.score = rw.score * 0.2;
-		rw.money = rw.money * 0.2;
+		rw.score = rw.score * 0.175;
+		rw.money = rw.money * 0.175;
 	}else{
 		rw.together = true;
 	}
@@ -2224,4 +3221,14 @@ function getRewards(mode, score, bonus, rank, all, ss, opts, admin){
 function filterRobot(item){
 	if(!item) return {};
 	return (item.robot && item.getData) ? item.getData() : item;
+}
+function commify(val){
+	var tester = /(^[+-]?\d+)(\d{3})/;
+	
+	if(val === null) return "?";
+	
+	val = val.toString();
+	while(tester.test(val)) val = val.replace(tester, "$1,$2");
+	
+	return val;
 }

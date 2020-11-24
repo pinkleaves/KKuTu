@@ -17,18 +17,19 @@
  */
 
 var GLOBAL = require("./sub/global.json");
-
+exports.KKUTU_MAX_SERVER = [60, 30, 30];
 exports.KKUTU_MAX = 50;
 exports.MAIN_PORTS = GLOBAL.MAIN_PORTS;
 exports.TEST_PORT = 4040;
-exports.SPAM_CLEAR_DELAY = 0;
-exports.SPAM_ADD_DELAY = 0;
-exports.SPAM_LIMIT = 10000000;
+exports.SPAM_CLEAR_DELAY = 200;
+exports.SPAM_ADD_DELAY = 350;
+exports.SPAM_LIMIT = 20;
 exports.BLOCKED_LENGTH = 20000;
-exports.KICK_BY_SPAM = 5000000;
+exports.KICK_BY_SPAM = 25;
 exports.MAX_OBSERVER = 4;
 exports.TESTER = GLOBAL.ADMIN.concat([
-	"Input tester id here"
+	"Input tester id here",
+	"117997976560534863706"
 ]);
 exports.IS_SECURED = GLOBAL.IS_SECURED;
 exports.SSL_OPTIONS = GLOBAL.SSL_OPTIONS;
@@ -59,21 +60,26 @@ exports.OPTIONS = {
 	'spw': { name: "Specwd" },
 	'scb': { name: "Scboost" },
 	'dlg': { name: "Declag" },
-	'rln': { name: "Rrlanner" } // rrlanner = 매너
+	'rln': { name: "Rrlanner" }, // rrlanner = 매너
+	'stl': { name: "Stlong" },
+	'lts': { name: "Ltshrt" },
+	'rgo': { name: "Rightgo" },
+	'fst': { name: "Faster" },
+	'arc': { name: "GameConn" }
 };
-exports.MOREMI_PART = [ 'back', 'skin', 'eye', 'eyeacc', 'mouth', 'shoes', 'clothes', 'head', 'lhand', 'rhand', 'front' ];
-exports.CATEGORIES = [ "all", "spec", "skin", "badge", "head", "eye", "eyeacc", "mouth", "clothes", "hs", "back" ];
+exports.MOREMI_PART = [ 'back', 'skin', 'eye', 'eyeacc', 'facc', 'mouth', 'shoes', 'clothes', 'hair', 'head', 'lhand', 'rhand', 'front' ];
+exports.CATEGORIES = [ "all", "spec", "skin", "badge", "head", "eye", "acc", "mouth", "clothes", "hs", "back" ];
 exports.AVAIL_EQUIP = [
-	"NIK", "BDG1", "BDG2", "BDG3", "BDG4",
-	"Mskin", "Mhead", "Meye", "Meyeacc", "Mmouth", "Mhand", "Mclothes", "Mshoes", "Mback"
+	"NIK", "BDG1", "BDG2", "BDG3", "BDG4", "Mhair",
+	"Mskin", "Mhead", "Meye", "Meyeacc", "Mfacc", "Mmouth", "Mhand", "Mclothes", "Mshoes", "Mback", "CHT", "STY", "EXP"
 ];
 exports.GROUPS = {
-	'spec': [ "PIX", "PIY", "PIZ", "CNS" ],
+	'spec': [ "PIX", "PIY", "PIZ", "CNS", "EVT", "CHT", "STY", "EXP" ],
 	'skin': [ "NIK", "Mskin" ],
 	'badge': [ "BDG1", "BDG2", "BDG3", "BDG4" ],
-	'head': [ "Mhead" ],
+	'head': [ "Mhair" ],
 	'eye': [ "Meye" ],
-	'eyeacc': [ "Meyeacc" ],
+	'acc': [ "Meyeacc", "Mfacc", "Mhead" ],
 	'mouth': [ "Mmouth" ],
 	'clothes': [ "Mclothes" ],
 	'hs': [ "Mhand", "Mshoes" ],
@@ -92,7 +98,7 @@ exports.RULE = {
 */
 	'EKT': { lang: "en",
 		rule: "Classic",
-		opts: [ "man", "ext", "mis", "rtl", "ptr", "meb", "vbl", "ift", "hax", "spc", "spw" ],
+		opts: [ "man", "ext", "mis", "rtl", "ptr", "meb", "vbl", "ift", "hax", "spc", "spw" , "arc" ],
 		time: 1,
 		ai: true,
 		big: false,
@@ -100,7 +106,7 @@ exports.RULE = {
 	},
 	'ESH': { lang: "en",
 		rule: "Classic",
-		opts: [ "ext", "mis", "rtl", "meb", "vbl", "ift", "hax", "spc", "spw" ],
+		opts: [ "ext", "mis", "rtl", "meb", "vbl", "ift", "hax", "spc", "spw" , "arc", "fst" ],
 		time: 1,
 		ai: true,
 		big: false,
@@ -108,7 +114,7 @@ exports.RULE = {
 	},
 	'KKT': { lang: "ko",
 		rule: "Classic",
-		opts: [ "man", "ext", "mis", "loa", "str", "k32", "rtl", "ptr", "dsa", "meb", "ift", "hax" ],
+		opts: [ "man", "ext", "mis", "loa", "str", "k32", "rtl", "ptr", "dsa", "meb", "ift", "hax" , "arc" ],
 		time: 1,
 		ai: true,
 		big: false,
@@ -116,7 +122,7 @@ exports.RULE = {
 	},
 	'KSH': { lang: "ko",
 		rule: "Classic",
-		opts: [ "man", "csd", "ext", "mis", "loa", "str", "rtl", "ptr", "dsa", "meb", "vbl", "ift", "hax" ],
+		opts: [ "man", "csd", "ext", "mis", "loa", "str", "rtl", "ptr", "dsa", "meb", "vbl", "ift", "hax" , "arc", "fst" ],
 		time: 1,
 		ai: true,
 		big: false,
@@ -124,7 +130,7 @@ exports.RULE = {
 	},
 	'CSQ': { lang: "ko",
 		rule: "Jaqwi",
-		opts: [ "meb", "ijp" ],
+		opts: [ "meb", "ijp" , "arc" ],
 		time: 1,
 		ai: true,
 		big: false,
@@ -132,7 +138,7 @@ exports.RULE = {
 	},
 	'KCW': { lang: "ko",
 		rule: "Crossword",
-		opts: [ ],
+		opts: [ , "arc" ],
 		time: 2,
 		ai: false,
 		big: true,
@@ -140,7 +146,7 @@ exports.RULE = {
 	},
 	'KTY': { lang: "ko",
 		rule: "Typing",
-		opts: [ "meb", "prv" ],
+		opts: [ "meb", "prv", "hax" , "arc" ],
 		time: 1,
 		ai: false,
 		big: false,
@@ -148,7 +154,7 @@ exports.RULE = {
 	},
 	'ETY': { lang: "en",
 		rule: "Typing",
-		opts: [ "meb" ],
+		opts: [ "meb", "hax" , "arc" ],
 		time: 1,
 		ai: false,
 		big: false,
@@ -156,7 +162,7 @@ exports.RULE = {
 	},
 	'KAP': { lang: "ko",
 		rule: "Classic",
-		opts: [ "man", "ext", "mis", "loa", "str", "ptr", "dsa", "meb", "vbl", "ift", "hax" ],
+		opts: [ "man", "ext", "mis", "loa", "str", "ptr", "dsa", "meb", "vbl", "ift", "hax" , "arc" ],
 		time: 1,
 		ai: true,
 		big: false,
@@ -165,7 +171,7 @@ exports.RULE = {
 	},
 	'HUN': { lang: "ko",
 		rule: "Hunmin",
-		opts: [ "ext", "mis", "loa", "str", "meb", "hax" ],
+		opts: [ "ext", "mis", "loa", "str", "meb", "hax" , "arc" ],
 		time: 1,
 		ai: true,
 		big: false,
@@ -173,7 +179,7 @@ exports.RULE = {
 	},
 	'KDA': { lang: "ko",
 		rule: "Daneo",
-		opts: [ "ijp", "mis", "rtl", "ift", "vbl", "meb", "hax", "scb" ],
+		opts: [ "ijp", "mis", "rtl", "ift", "vbl", "meb", "hax", "scb", "stl", "lts", "rgo" , "arc" ],
 		time: 1,
 		ai: true,
 		big: false,
@@ -181,7 +187,7 @@ exports.RULE = {
 	},
 	'EDA': { lang: "en",
 		rule: "Daneo",
-		opts: [ "ijp", "mis", "rtl", "ift", "vbl", "meb", "hax", "scb" ],
+		opts: [ "ijp", "mis", "rtl", "ift", "vbl", "meb", "hax", "scb", "stl", "lts", "rgo" , "arc" ],
 		time: 1,
 		ai: true,
 		big: false,
@@ -189,7 +195,7 @@ exports.RULE = {
 	},
 	'KSS': { lang: "ko",
 		rule: "Sock",
-		opts: [ "no2", "meb" ],
+		opts: [ "no2", "meb" , "arc" ],
 		time: 1,
 		ai: false,
 		big: true,
@@ -197,7 +203,7 @@ exports.RULE = {
 	},
 	'ESS': { lang: "en",
 		rule: "Sock",
-		opts: [ "no2", "meb" ],
+		opts: [ "no2", "meb" , "arc" ],
 		time: 1,
 		ai: false,
 		big: true,
@@ -205,7 +211,7 @@ exports.RULE = {
 	},
 	'KAD': { lang: "ko",
 		rule: "allDaneo",
-		opts: [ "mis", "rtl", "meb", "vbl", "ift", "hax" ],
+		opts: [ "mis", "rtl", "meb", "vbl", "ift", "hax", "rgo" , "arc" ],
 		time: 1,
 		ai: true,
 		big: false,
@@ -213,7 +219,7 @@ exports.RULE = {
 	},
 	'EAD': { lang: "en",
 		rule: "allDaneo",
-		opts: [ "mis", "rtl", "meb", "vbl", "ift", "hax" ],
+		opts: [ "mis", "rtl", "meb", "vbl", "ift", "hax", "rgo" , "arc" ],
 		time: 1,
 		ai: true,
 		big: false,
@@ -221,7 +227,7 @@ exports.RULE = {
 	},
 	'KAW': { lang: "ko",
 		rule: "All",
-		opts: [ "mis", "rtl", "meb", "ift", "slt", "ssg", "sl1", "shk", "vbl", "hax", "scb", "dlg" ],
+		opts: [ "mis", "rtl", "meb", "ift", "slt", "ssg", "sl1", "shk", "vbl", "hax", "scb", "dlg", "rgo", "fst" , "arc" ],
 		time: 1,
 		ai: true,
 		big: false,
@@ -229,7 +235,7 @@ exports.RULE = {
 	},
 	'EAW': { lang: "en",
 		rule: "All",
-		opts: [ "mis", "rtl", "meb", "ift", "slt", "ssg", "sl1", "shk", "vbl", "hax", "scb", "dlg" ],
+		opts: [ "mis", "rtl", "meb", "ift", "slt", "ssg", "sl1", "shk", "vbl", "hax", "scb", "dlg", "rgo", "fst" , "arc" ],
 		time: 1,
 		ai: true,
 		big: false,
@@ -237,7 +243,7 @@ exports.RULE = {
 	},
 	'KMT': { lang: "ko",
 		rule: "Classic",
-		opts: [ "man", "ext", "mis", "rtl", "ptr", "meb", "ift", "vbl", "hax" ],
+		opts: [ "man", "ext", "mis", "rtl", "ptr", "meb", "ift", "vbl", "hax" , "arc" ],
 		time: 1,
 		ai: true,
 		big: false,
@@ -245,7 +251,7 @@ exports.RULE = {
 	},
 	'KEA': { lang: "ko",
 		rule: "keAll",
-		opts: [ "mis", "rtl", "meb", "ift", "vbl", "hax" ],
+		opts: [ "mis", "rtl", "meb", "ift", "vbl", "hax", "rgo" , "arc" ],
 		time: 1,
 		ai: false,
 		big: false,
@@ -253,7 +259,7 @@ exports.RULE = {
 	},
 	'EKD': { lang: "en",
 		rule: "Classic",
-		opts: [ "ext", "mis", "k32", "rtl", "meb", "ift", "hax" ],
+		opts: [ "ext", "mis", "k32", "rtl", "meb", "ift", "hax" , "arc" ],
 		time: 1,
 		ai: true,
 		big: false,
@@ -262,7 +268,7 @@ exports.RULE = {
 	},
 	'KDG': { lang: "ko",
 		rule: "Drawing",
-		opts: [ "ijp", "sht", "ulm" ],
+		opts: [ "ijp", "sht", "ulm" , "arc" ],
 		time: 1,
 		ai: false,
 		big: true,
@@ -270,7 +276,7 @@ exports.RULE = {
 	},
 	'EDG': { lang: "en",
 		rule: "Drawing",
-		opts: [ "ijp", "sht", "ulm" ],
+		opts: [ "ijp", "sht", "ulm" , "arc" ],
 		time: 1,
 		ai: false,
 		big: true,
@@ -278,7 +284,7 @@ exports.RULE = {
 	},
 	'EAP': { lang: "en",
 		rule: "Classic",
-		opts: [ "ext", "mis", "rtl", "meb", "vbl", "ift", "hax", "spc" ],
+		opts: [ "ext", "mis", "rtl", "meb", "vbl", "ift", "hax", "spc" , "arc" ],
 		time: 1,
 		ai: true,
 		big: false,
@@ -286,7 +292,7 @@ exports.RULE = {
 	},
 	'KJH': { lang: "ko",
 		rule: "Jycls",
-		opts: [ "mis", "rtl", "ift", "meb", "vbl", "dsa", "rln" ],
+		opts: [ "mis", "rtl", "ift", "meb", "vbl", "dsa", "rln" , "arc", "hax" ],
 		time: 1,
 		ai: false,
 		big: false,
@@ -294,15 +300,54 @@ exports.RULE = {
 	},
 	'EJH': { lang: "en",
 		rule: "Jycls",
-		opts: [ "mis", "rtl", "ift", "meb", "vbl", "rln" ],
+		opts: [ "mis", "rtl", "ift", "meb", "vbl", "rln" , "arc", "hax" ],
 		time: 1,
 		ai: false,
 		big: false,
 		ewq: true
+	},
+	'KGT': { lang: "ko",
+		rule: "Classic",
+		opts: [ "man", "ext", "mis", "loa", "str", "rtl", "ptr", "dsa", "meb", "vbl", "ift", "hax" , "arc" ],
+		time: 1,
+		ai: true,
+		big: false,
+		ewq: true
+	},
+	'KTT': { lang: "ko",
+		rule: "Typing",
+		opts: [ "ijp", "meb", "hax" , "arc" ],
+		time: 1,
+		ai: false,
+		big: false,
+		ewq: false
+	},
+	'ETT': { lang: "en",
+		rule: "Typing",
+		opts: [ "ijp", "meb", "hax" , "arc" ],
+		time: 1,
+		ai: false,
+		big: false,
+		ewq: false
+	},
+	'TAK': { lang : "ko",
+		rule: "Classic",
+		opts: [],
+		time: 1,
+		ai: true,
+		big: false,
+		ewq: false
 	}
 };
 exports.getPreScore = function(text, chain, tr){
-	return 2 * (Math.pow(5 + 7 * (text || "").length, 0.74) + 0.88 * (chain || []).length) * ( 0.5 + 0.5 * tr );
+	var CL = (chain || []).length;
+	if(CL>30) CL=30+((CL-30)/2);
+	if(CL>90) CL=90+((CL-90)/5);
+	if(CL>150) CL=150+((CL-150)/7.5);
+	var tlen = (text || " ").length;
+	//if(tlen>200) tlen = 200 + Math.floor((tlen-200)/10);
+	if(tlen>50) tlen=50+((tlen-50)/3);
+	return 2 * (Math.pow(5 + 7 * tlen, 0.74) + 0.88 * CL * ( 0.5 + 0.5 * tr ));
 };
 exports.getPenalty = function(chain, score){
 	return -1 * Math.round(Math.min(10 + (chain || []).length * 2.1 + score * 0.15, score));
@@ -320,14 +365,16 @@ exports.KO_INJEONG = [
 	"IMS", "VOC", "KRR", "KTV",
 	"NSK", "KOT", "DOT", "DRR", "DGM", "RAG", "LVL",
 	"LOL", "MRN", "MMM", "MAP", "MKK", "MNG",
-	"MOB", "HYK", "CYP", "HRH", "STA", "OIJ",
-	"KGR", "ESB", "ELW", "OIM", "OVW", "NEX", /*"WOW",*/
+	"HYK", "CYP", "HRH", "STA", "OIJ",
+	"KGR", "ESB", "ELW", "OIM", "OVW", /*"WOW",*/
 	"YRY", "KPO", "JLN", "JAN", "ZEL", "POK", "HAI",
 	"HSS", "KMV", "WMV", "HDC", "HOS", "PFL", "SBK", "CKR", "BUS",
-	"MCP", "KTR", "COV", "DBG", "WBT", "SCH", "BRW"
+	"MCP", "KTR", "COV", "DBG", "WBT", "SCH", "BRW", "PRV", "JOB", "KPS",
+	"KYT", "MPE", "ONE", "DOR", "ZBH", "CLY", "MCM", "BTR", "BSI", "MFF", "ACV",
+	"ARP", "KRD", "JPT", "NKT", "PBC", "YKW", "GAM", "NFL", "SVN", "MDM"
 ];
 exports.EN_INJEONG = [
-	"LOL"
+	"LOL", "PRV", "MCP"
 ];
 exports.KO_THEME = [
 	"30", "40", "60", "80", "90",
@@ -341,7 +388,7 @@ exports.EN_THEME = [
 	"e18", "e20", "e43"
 ];
 exports.IJP_EXCEPT = [
-	//"OIJ"
+	/*"OIJ"*/"VOC", "DRR", "MKK", "HYK", "HRH", "OIM", "YRY"
 ];
 exports.KO_IJP = exports.KO_INJEONG.concat(exports.KO_THEME).filter(function(item){ return !exports.IJP_EXCEPT.includes(item); });
 exports.EN_IJP = exports.EN_INJEONG.concat(exports.EN_THEME).filter(function(item){ return !exports.IJP_EXCEPT.includes(item); });

@@ -102,6 +102,7 @@ block Middle
 						td lastaccess
 						td blackt
 						td enhance
+						td post
 					tbody#user-data
 			button#user-apply 적용
 	fieldset
@@ -140,10 +141,17 @@ block Middle
 		legend 끄투 DB에 단어 추가하기
 		div.dialog-bar
 			//input#db-theme(placeholder='주제 (~부터 적으면 검색)')
+			input#db-code(placeholder='주제' style="width: 147.5px; display: none;")
 			select#db-theme(style="width: 159px;")
 				option(value='' disabled selected)= '주제 선택'
-			input(type='checkbox' id='db-search' style='margin-left: 10px; margin-top: 3px; width: 15px;')
-			label(for='db-search')= '검색'
+			div(class='container' id='elem1')
+				label(for='db-search')= '검색'
+				span
+					input(type='checkbox' id='db-search' style='margin-left: 5px; margin-top: 3px; width: 15px;')
+			div(class='container' id='elem2')
+				label(for='wsel-code')= '코드 직접 입력'
+				span
+					input(type='checkbox' id='wsel-code' style='margin-left: 5px; margin-top: 3px; width: 15px;')
 		textarea#db-list(rows=20, cols=100)
 		button#db-ok 확인
 	fieldset

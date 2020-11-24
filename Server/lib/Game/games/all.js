@@ -107,7 +107,7 @@ exports.turnEnd = function(){
 		score = Const.getPenalty(my.game.chain, target.game.score);
 		target.game.score += score;
 	}
-	getAuto.call(my, my.game.theme, 0).then(function(w){
+	/*getAuto.call(my, my.game.theme, 0).then(function(w){
 		my.byMaster('turnEnd', {
 			ok: false,
 			target: target ? target.id : null,
@@ -115,7 +115,14 @@ exports.turnEnd = function(){
 			hint: w
 		}, true);
 		my.game._rrt = setTimeout(my.roundReady, my.opts.faster ? 1500 : 3000);
-	});
+	});*/
+	my.byMaster('turnEnd', {
+		ok: false,
+		target: target ? target.id : null,
+		score: score,
+		hint: ''
+	}, true);
+	my.game._rrt = setTimeout(my.roundReady, my.opts.faster ? 1500 : 3000);
 	clearTimeout(my.game.robotTimer);
 };
 exports.submit = function(client, text, data){
@@ -148,7 +155,8 @@ exports.submit = function(client, text, data){
 					wc: $doc.type,
 					score: score,
 					bonus: (my.game.mission === true) ? score - my.getScore(text, t, true) : 0,
-					baby: $doc.baby
+					baby: $doc.baby,
+					cs: client.game.score
 				}, true);
 				if(my.game.mission === true){
 					my.game.mission = getMission(my.rule.lang);
@@ -174,6 +182,7 @@ exports.submit = function(client, text, data){
 					ok: true,
 					value: text,
 					score: score,
+					cs: client.game.score,
 					bonus: (my.game.mission === true) ? score - my.getScore(text, t, true) : 0,
 				}, true);
 				if(my.game.mission === true){
@@ -218,7 +227,7 @@ exports.getScore = function(text, delay, ignoreMission){
 	var arr;
 	
 	if(!ignoreMission) if(arr = text.match(new RegExp(my.game.mission, "g"))){
-		score += score * 0.5 * arr.length;
+		score += score * 0.5 * (arr.length>200?200+((arr.length-200)/10):arr.length);
 		my.game.mission = true;
 	}
 	if(my.opts.scboost) score = score * 10000000;

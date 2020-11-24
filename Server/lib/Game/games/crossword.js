@@ -179,6 +179,7 @@ exports.submit = function(client, text, data){
 			}
 			client.game.score += score;
 			client.publish('turnEnd', {
+				cs: client.game.score,
 				target: client.id,
 				pos: data,
 				value: text,

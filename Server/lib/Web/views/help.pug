@@ -359,66 +359,70 @@ block Middle
 				| 이 수치는 레벨로 환산되어 이름표에 여러분의 이름과 계급장이 함께 나타납니다.
 				| 레벨에 따른 계급장 및 필요 경험치는 아래와 같습니다.
 			table#box-exp-table
-				-
-					function getRequiredScore(lv){
-						if(lv <= 0) return 0;
-						var asc = 0;
-						if(lv > 400) asc += lv * 11;
-						if(lv > 450) asc += lv * 13;
-						if(lv > 500) asc += lv * 18;
-						if(lv > 550) asc += lv * 13;
-						if(lv > 600) asc += lv * 11;
-						/*if(lv > 650) asc += lv * 20;
-						if(lv >= 745) asc += lv * 10;*/
-						if(lv == 99) return 435;
-						if(lv <= 99) lv = Math.round(lv * 0.6);
-						if(lv == 999) return 121377;
-						if(lv > 999 && lv < 1010) return 110000;
-						if(lv > 1009 && lv < 1020) return 120000;
-						if(lv > 1019 && lv < 1030) return 130000;
-						if(lv > 1029 && lv < 1040) return 140000;
-						if(lv > 1039 && lv < 1049) return 150000;
-						if(lv == 1049) return 650000;
-						if(lv == 1050) return 3000000;
-						var psc = Math.round(
-							(!(lv%5)*0.3 + 1) * (!(lv%15)*0.4 + 1) * (!(lv%45)*0.5 + 1) * (
-							10 + Math.floor(lv/5)*4 + Math.floor(lv*lv/225)*8 + Math.floor(lv*lv/2025)*9.8
-							)
-						);
-						var finalscore = psc + asc;
-						return finalscore;
+				-	
+					function process(num){
+						return String(Number(num));
 					}
-					function getLevel(l){
-						var n;
-						if(l > 1000 && l < 1010) return '초보' + String(10 - (1010 - l));
-						if(l == 1010) return '초보★';
-						if(l > 1010 && l < 1020) return '하수' + String(10 - (1020 - l));
-						if(l == 1020) return '하수★';
-						if(l > 1020 && l < 1030) return '중수' + String(10 - (1030 - l));
-						if(l == 1030) return '중수★';
-						if(l > 1030 && l < 1040) return '고수' + String(10 - (1040 - l));
-						if(l == 1040) return '고수★';
-						if(l > 1040 && l < 1050) return '전설' + String(10 - (1050 - l));
-						if(l == 1050) return '전설★';
-						else if(l == 1051) return 'Master';
-						else return l;
+					function convert(num){
+						if(num >= 10000 && num <= 99999999) return Math.floor(num/10000)+'만 ' + process(String(num).slice(-4))
+						if(num >= 100000000 && num <= 999999999999) return Math.floor(num/100000000)+'억 '+process(String(num).slice(-8,-4)) + '만';
+						if(num >= 1000000000000 && num <= 9999999999999999) return Math.floor(num/1000000000000)+'조 ' + process(String(num).slice(-12,-8))+'억';
+						if(num >= 10000000000000000 && num <= 99999999999999999999) return Math.floor(num/10000000000000000)+'경';
+						if(num >= 100000000000000000000 && num <= 999999999999999999999999) return Math.floor(num/100000000000000000000)+'해';
+						return num;
 					}
-
+					function processReqExp(no){
+						var ratio = [
+							1.0125,1.01,1.01,1.01,1.01,1.01,1.01,1.01,1.01,1.01,1.01,1.01,
+							1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005,
+							1.01,1.01,1.01,1.01,1.005,1.005,1.005,1.005,1.005,1.005,1.005,1.005,
+							1.002,1.002,1.002,1.002,1.002,1.002,1.0025,1.003,
+							1.005,1.0055,1.006,1.0065,1.007,1.0075,1.008,1.0085,
+							1.009,1.0095,1.01,1.0105,1.011,1.0115,1.012,1.0125,
+							1.013,1.0135,1.014,1.0145,1.005,1.0055,1.006,1.0065,
+							1.007,1.0075,1.008,1.0085,1.009,1.0095,1.01,1.01,
+							1.01,1.01,1.01,1.01,
+							1.01,1.01,1.0125,1.05,0
+						];
+						var LEVEL = [1];
+						var EP = 0;
+						var EXP = [];
+						var ci = 0;
+						var spec = false;
+						var sc = 0;
+						var specLevel = [ 10, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 1950, 1975, 1990, 1995, 1999, Infinity ];
+						var specRatio = [ 0.25, 100, 0.2, 0.3, 0.2, 0.3, 0.5, 0.2, 0.3, 0.2, 0.2, 0.2, 0.3, 0.2, 0.25, 3 ];
+						for(var i=0;i<((ratio.length-1)*25)-2;i++){
+							if((i+2)%25 == 0 && i!=0) ci++;
+							if(i+2 == specLevel[sc]){
+								spec = true;
+								sc += 1;
+							}
+							if(((ratio.length-1)*25)-3 == i){ci++;}
+							LEVEL.push(Math.ceil(spec?(specRatio[sc-1]+ratio[ci])*LEVEL[i]:ratio[ci]*LEVEL[i]));
+							spec = false;
+						}
+						for(var i=0; i<LEVEL.length; i++){
+							EP += LEVEL[i];
+							EXP.push(EP);
+						}
+						EXP.push(Infinity);
+						EXP.push(Infinity);
+						LEVEL.unshift(0);
+						return LEVEL[no];
+					}
 				thead: tr
-					td(style='width: 40px;') 계급장
 					td 레벨
 					td 필요 경험치
 					td 총 경험치
 				tbody(style='text-align: center;')
-					- var MAX_LEVEL = 1051;
+					- var MAX_LEVEL = 2000;
 					- var curr, integ = 0;
 					- for(var lv=1; lv<=MAX_LEVEL; lv++)
-						
 						tr
-							td: img(src='/img/kkutu/lv/lv' + zeroPadding(lv, 4) + '.png')
-							td= getLevel(lv)
-							td= curr = getRequiredScore(lv - 1)
-							td= integ += curr
+							td= lv
+							td= convert(curr = processReqExp(lv-1))
+							td= convert(integ += curr)
 		div.page-body#box-c5p3
 			p
 				| 끄투 서버는 여러분의 게임 이용에 따라 계정으로 핑을 부여합니다.

@@ -21,7 +21,7 @@ var Lizard = require('../../sub/lizard');
 var DB;
 var JLog = require('../../sub/jjlog');
 var DIC;
-var ptext = "∞°";
+var ptext = "Í∞Ä";
 
 const ROBOT_START_DELAY = [ 700, 500, 200, 100, 0 ];
 const ROBOT_TYPE_COEF = [ 500, 300, 250, 125, 0 ];
@@ -106,7 +106,7 @@ exports.getTitle = function(){
 		var i, list = [];
 		var len;
 		
-		/* ∫Œ«œ∞° ≥ π´ ∞…∏∞¥Ÿ∏È ¡÷ºÆ¿ª «Æ¿⁄.
+		/* Î∂ÄÌïòÍ∞Ä ÎÑàÎ¨¥ Í±∏Î¶∞Îã§Î©¥ Ï£ºÏÑùÏùÑ ÌíÄÏûê.
 		R.go(true);
 		return R;
 		*/
@@ -148,7 +148,7 @@ exports.roundReady = function(){
 			subChar: my.game.subChar,
 			mission: my.game.mission
 		}, true);
-		my.game.turnTimer = setTimeout(my.turnStart, 2400);
+		my.game.turnTimer = setTimeout(my.turnStart, my.opts.faster ? 1200 : 2400);
 	}else{
 		my.roundEnd();
 	}
@@ -168,6 +168,7 @@ exports.turnStart = function(force){
 	clearTimeout(my.game.robotTimer);
 	my.game.late = false;
 	my.game.turnTime = 15000 - 1400 * speed;
+	if(my.opts.faster) my.game.turnTime /= 2;
 	my.game.turnAt = (new Date()).getTime();
 	if(my.opts.sami) my.game.wordLength = (my.game.wordLength == 3) ? 2 : 3;
 	
@@ -183,7 +184,7 @@ exports.turnStart = function(force){
 		seq: force ? my.game.seq : undefined
 	}, true);
 	my.game.turnTimer = setTimeout(my.turnEnd, Math.min(my.game.roundTime, my.game.turnTime + 100));
-	if(si = my.game.seq[my.game.turn]) if(si.robot){
+	if(si = my.game.seq[my.game.turn]) if(si.robot && !si.plient){
 		si._done = [];
 		my.readyRobot(si);
 	}
@@ -197,7 +198,7 @@ exports.turnEnd = function(){
 	target = DIC[my.game.seq[my.game.turn]] || my.game.seq[my.game.turn];
 	
 	if(my.game.loading){
-		my.game.turnTimer = setTimeout(my.turnEnd, 100);
+		my.game.turnTimer = setTimeout(my.turnEnd, my.opts.faster ? 50 : 100);
 		return;
 	}
 	my.game.late = true;
@@ -225,7 +226,7 @@ exports.turnEnd = function(){
 			score: score,
 			hint: w
 		}, true);
-		my.game._rrt = setTimeout(my.roundReady, 3000);
+		my.game._rrt = setTimeout(my.roundReady, my.opts.faster ? 1500 : 3000);
 	});
 	clearTimeout(my.game.robotTimer);
 };
@@ -271,6 +272,7 @@ exports.submit = function(client, text){
 				client.game.score += score;
 				ptext = text
 				client.publish('turnEnd', {
+					cs: client.game.score,
 					ok: true,
 					value: text,
 					mean: $doc.mean,
@@ -285,7 +287,7 @@ exports.submit = function(client, text){
 				}
 				setTimeout(my.turnNext, my.game.turnTime / 6);
 				if(!client.robot && !my.opts.inftime && !my.opts.hack){
-					client.invokeWordPiece(text, 1);
+					client.invokeWordPiece(text, my.opts.return ? 0.5 : 1);
 					DB.kkutu[l].update([ '_id', text ]).set([ 'hit', $doc.hit + 1 ]).on();
 				}
 			}
@@ -294,7 +296,7 @@ exports.submit = function(client, text){
 				else{
 					my.game.loading = false;
 					client.publish('turnError', { code: firstMove ? 402 : 403, value: text }, true);
-					if(client.robot){
+					if(client.robot && !client.plient){
 						my.readyRobot(client);
 					}
 				}
@@ -347,9 +349,9 @@ exports.getScore = function(text, delay, ignoreMission){
 	var score, arr;
 	
 	if(!text || !my.game.chain || !my.game.dic) return 0;
-	var jarr = [];
-	if(my.time >= 300) score = Const.getPreScore(text, jarr, tr);
-	else score = Const.getPreScore(text, my.game.chain, tr);
+	/*if(my.time >= 300) score = Const.getPreScore(text, jarr, tr);
+	else score = Const.getPreScore(text, my.game.chain, tr);*/
+	score = Const.getPreScore(text, my.game.chain, tr);
 	
 	if(my.game.dic[text]) score *= 15 / (my.game.dic[text] + 15);
 	if(!ignoreMission) if(arr = text.match(new RegExp(my.game.mission, "g"))){
@@ -375,22 +377,7 @@ exports.readyRobot = function(robot){
 			if(ROBOT_HIT_LIMIT[level] > list[0].hit) denied();
 			else{
 				if(level >= 3 && !robot._done.length){
-					if(Math.random() < 0.5) list.sort(function(a, b){ return b._id.length - a._id.length; });
-					/*if(list[0]._id.length < 8 && my.game.turnTime >= 2300){
-						for(i in list){
-							w = list[i]._id.charAt(isRev ? 0 : (list[i]._id.length - 1));
-							if(!ended.hasOwnProperty(w)) ended[w] = [];
-							ended[w].push(list[i]);
-						}
-						getWishList(Object.keys(ended)).then(function(key){
-							var v = ended[key];
-							
-							if(!v) denied();
-							else pickList(v);
-						});
-					}else{
-						pickList(list);
-					}*/
+					if(Math.random() < 0.5 || level >= 4) list.sort(function(a, b){ return b._id.length - a._id.length; });
 					pickList(list);
 				}else pickList(list);
 			}
@@ -408,10 +395,7 @@ exports.readyRobot = function(robot){
 			text = w._id;
 			delay += 500 * ROBOT_THINK_COEF[level] * Math.random() / Math.log(1.1 + w.hit);
 			if(my.game.chain.indexOf(text) != -1 && !my.game.late){
-				after();
-				setTimeout(function() {
-					pickList(list);
-				}, 150)
+				pickList(list);
 			} else {
 				after();
 			}
@@ -457,9 +441,9 @@ function getMission(l){
 }
 function getAuto(char, subc, type){
 	/* type
-		0 π´¿€¿ß ¥‹æÓ «œ≥™
-		1 ¡∏¿Á ø©∫Œ
-		2 ¥‹æÓ ∏Ò∑œ
+		0 Î¨¥ÏûëÏúÑ Îã®Ïñ¥ ÌïòÎÇò
+		1 Ï°¥Ïû¨ Ïó¨Î∂Ä
+		2 Îã®Ïñ¥ Î™©Î°ù
 	*/
 	var my = this;
 	var R = new Lizard.Tail();
@@ -503,7 +487,7 @@ function getAuto(char, subc, type){
 	if(!char){
 		console.log(`Undefined char detected! key=${key} type=${type} adc=${adc}`);
 	}
-	MAN.findOne([ '_id', char || "°⁄" ]).on(function($mn){
+	MAN.findOne([ '_id', char || "‚òÖ" ]).on(function($mn){
 		if($mn && bool){
 			if($mn[key] === null) produce();
 			else R.go($mn[key]);
@@ -611,12 +595,12 @@ function getSubChar(char){
 			ca = [ Math.floor(k/28/21), Math.floor(k/28)%21, k%28 ];
 			cb = [ ca[0] + 0x1100, ca[1] + 0x1161, ca[2] + 0x11A7 ];
 			cc = false;
-			if(cb[0] == 4357){ // §©ø°º≠ §§, §∑
+			if(cb[0] == 4357){ // „ÑπÏóêÏÑú „Ñ¥, „Öá
 				cc = true;
 				if(RIEUL_TO_NIEUN.includes(cb[1])) cb[0] = 4354;
 				else if(RIEUL_TO_IEUNG.includes(cb[1])) cb[0] = 4363;
 				else cc = false;
-			}else if(cb[0] == 4354){ // §§ø°º≠ §∑
+			}else if(cb[0] == 4354){ // „Ñ¥ÏóêÏÑú „Öá
 				if(NIEUN_TO_IEUNG.indexOf(cb[1]) != -1){
 					cb[0] = 4363;
 					cc = true;

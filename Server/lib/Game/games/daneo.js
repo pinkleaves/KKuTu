@@ -150,6 +150,7 @@ exports.submit = function(client, text, data){
 				if(!my.opts.inftime) my.game.roundTime -= t;
 				client.game.score += score;
 				client.publish('turnEnd', {
+					cs: client.game.score,
 					ok: true,
 					value: text,
 					mean: $doc.mean,
@@ -164,7 +165,7 @@ exports.submit = function(client, text, data){
 				}
 				setTimeout(my.turnNext, my.opts.rightgo ? my.game.turnTime / 12 : my.game.turnTime / 6);
 				if(!client.robot && !my.opts.inftime && !my.opts.hack){
-					client.invokeWordPiece(text, my.opts.rightgo ? 0.5 : 1);
+					client.invokeWordPiece(text, my.opts.rightgo ? (my.opts.return?0.25:0.5) : (my.opts.return?0.5:1) );
 					DB.kkutu[l].update([ '_id', text ]).set([ 'hit', $doc.hit + 1 ]).on();
 				}
 			}
@@ -191,7 +192,9 @@ exports.getScore = function(text, delay, ignoreMission){
 	var arr;
 	
 	if(!ignoreMission) if(arr = text.match(new RegExp(my.game.mission, "g"))){
-		score += score * 0.5 * arr.length;
+		var W = arr.length;
+		if(W>8) W = 8+((W-8)/3);
+		score += score * 0.5 * W;
 		my.game.mission = true;
 	}
 	if(my.opts.scboost) score = score * 100000;

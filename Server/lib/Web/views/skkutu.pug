@@ -76,7 +76,7 @@ block JS
 			});
 		}
 	script(type='text/javascript', async src='//cdn.jsdelivr.net/npm/@fingerprintjs/fingerprintjs@3/dist/fp.min.js' onload='pfA()')
-	script(type='text/javascript', src='/js/in_game_kkutu.min.js')
+	script(type='text/javascript', src='/js/in_game_skkutu.min.js')
 	script(type='text/javascript', src='/js/chanIO.min.js')
 	script(type='text/javascript', src='https://cdn.jsdelivr.net/gh/pink-flower/pink-kkutu@latest/js/fabric.min.js')
 	script(src='https://www.google.com/recaptcha/api.js')
@@ -117,67 +117,22 @@ block Middle
 		button#SettingBtn.tiny-menu.for-lobby.for-master.for-normal.for-gaming(style='display: none; background-color: #CCCCCC;')!= L('settings')
 		button#VolumeBtn.tiny-menu.for-lobby.for-master.for-normal.for-gaming(style='display: none; background-color: #DDDDDD;'): +FA('volume-up')
 		button#CommunityBtn.tiny-menu.for-lobby.for-master.for-normal.for-gaming(style='display: none; background-color: #DAA9FF;')!= L('community')
-		button#UserboardBtn.tiny-menu.for-lobby.for-master.for-normal.for-gaming(style='display: none; background-color: #DAA9FF;'): +FA('users')
-		// button#NicksetBtn.tiny-menu.for-lobby.for-master.for-normal.for-gaming(style='display: none; background-color: #DAA9FF;'): +FA('user')
 		button#LeaderboardBtn.tiny-menu.for-lobby.for-master.for-normal.for-gaming(style='display: none; background-color: #FFADD3;')!= L('onlyleaderboard')
 		button#MyeongboardBtn.tiny-menu.for-lobby.for-master.for-normal.for-gaming(style='display: none; background-color: #FF7F00;')!= L('onlymyeongboard')
 		button#PingboardBtn.tiny-menu.for-lobby.for-master.for-normal.for-gaming(style='display: none; background-color: #9FE669;'): +FA('krw')
-		// button#GwalliBtn.tiny-menu.for-lobby.for-master.for-normal.for-gaming(style='display: none; background-color: #CCCCCC;'): +FA('shield')
 		button#SpectateBtn.for-master.for-normal(style='display: none; background-color: #D19DFF;')= L('spectate')
 		button#SetRoomBtn.for-master(style='display: none; background-color: #B0D2F3;')= L('setRoom')
 		button#NewRoomBtn.for-lobby(style='display: none; background-color: #8EC0F3;')= L('newRoom')
 		button#QuickRoomBtn.for-lobby(style='display: none; background-color: #B0D2F3;')= L('quickRoom')
 		button#ShopBtn.for-lobby(style='display: none; background-color: #B3E7B7;')= L('shop')
-		// button#ExchangeBtn.for-lobby(style='display: none; background-color: #9FE669;')= '이벤트'
 		button#DictionaryBtn.for-lobby.for-master.for-normal.for-gaming(style='display: none; background-color: #73D07A;')= L('dict')
-		// button#WordPlusBtn.for-lobby.for-master.for-normal.for-gaming(style='display: none; background-color: #73D07A;')= L('wordPlus')
 		button#InviteBtn.for-master(style='display: none; background-color: #9FE669;')= L('invite')
 		button#PracticeBtn.for-master.for-normal(style='display: none; background-color: #FCF5A9;')= L('practice')
 		button#ReadyBtn.for-normal(style='display: none; background-color: #FFC67F;')= L('ready')
 		button#StartBtn.for-master(style='display: none; background-color: #FFB576;')= L('start')
 		button#ExitBtn.for-master.for-normal.for-gaming(style='display: none; background-color: #FFADAD;')= L('exit')
 		button#ReplayBtn.for-lobby(style='display: none; background-color: #D9FF82;')= L('replay')
-		// button#EXPEvtBtn.for-lobby(style='display: none; background-color: #9FE669;')= '광복절'
-		// button#LeaderboardBtn.for-lobby(style='display: none; background-color: #FFADD3;')!= L('leaderboard')
-		button#RenewBtn.tiny-menu.for-lobby(style='display: none; background-color: #CCCCCC;'): +FA('refresh')
-		button#MissionBtn.tiny-menu.for-lobby(style='display: none; background-color: #B0D2F3;'): +FA('edit')
-		button#PostBtn.tiny-menu.for-lobby(style="display: none; background-color: #FA8128;"): +FA('envelope')
-		button#ExpBtn.tiny-menu.for-lobby(style="display: none; background-color: #9FE669;"): +FA('exchange')
-		button#StatBtn.tiny-menu.for-lobby(style="display: none; background-color: #B3E7B7;"): +FA('chevron-up')
-		button#HwakBtn.tiny-menu.for-lobby(style="display: none; background-color: #BBBBBB;"): +FA('bullhorn')
 		div#facebook-menu.fb-like.for-lobby.for-master.for-normal.for-gaming(data-href='http://kkutu.kr', data-width='300', data-layout='button_count', data-action='like', data-show-faces='true', data-share='true')
-	+Dialog('StatDiag', 300, 235, '포인트 사용')
-		div.dialog-bar
-			h4= '경험치'
-			input#stat-exp(type='number', readonly, style="width: 55px;")
-			button#plus-exp(style="margin-left: 12.5px; width: 12px; height: 12px;"): +FA('plus')
-			button#plus-exp10(style="margin-left: 2px; width: 28px; height: 12px;"): +FAStr('plus', '10')
-			button#plus-exp100(style="margin-left: 2px; width: 35px; height: 12px;"): +FAStr('plus', '100')
-		div.dialog-bar
-			h4= '핑'
-			input#stat-mny(type='number', readonly, style="width: 55px;")
-			button#plus-mny(style="margin-left: 12.5px; width: 12px; height: 12px;"): +FA('plus')
-			button#plus-mny10(style="margin-left: 2px; width: 28px; height: 12px;"): +FAStr('plus', '10')
-			button#plus-mny100(style="margin-left: 2px; width: 35px; height: 12px;"): +FAStr('plus', '100')
-		div.dialog-bar
-			h4= '남은 포인트'
-			input#stat-point(type="number", readonly, style="width: 55px;")
-			button#stat-reset(style="margin-left: 12.5px; width: 90px; height: 12px;"): +FAStr('refresh', '초기화')
-		div.dialog-bar
-		div.dialog-bar
-			h4(style="width: 70px;")= '효과 '
-			h4(style="width: 45px;")= '경험치'
-			h4(style="width: 5px;")= '+'
-			input#eff-exp(type='number', readonly, style="width: 67.5px; margin-left: 7.5px;")
-			h4(style="width: 10px; margin-left: 5px;")= '%'
-		div.dialog-bar
-			h4(style="width: 70px;")
-			h4(style="width: 45px;")= '핑'
-			h4(style="width: 5px;")='+'
-			input#eff-mny(type='number', readonly, style="width: 67.5px; margin-left: 7.5px;")
-			h4(style="width: 10px; margin-left: 5px;")= '%'
-		div.dialog-bar.tail-button
-			button#stat-close= '닫기'
 	+Dialog('VolumeDiag', 300, 140, '볼륨 설정')
 		div.dialog-bar
 			h4= L('bgm')
@@ -187,28 +142,7 @@ block Middle
 			+SliderBar('eff-v', 155)
 		div.dialog-bar.tail-button
 			button#volume-ok= '확인'
-	+Dialog('ExpDiag', 300, 135, '핑 → 경험치 교환소')
-		div.dialog-bar
-			h4= '사용할 핑'
-			input#money-use(type='number', min=0, max=300000, step=1000, value=0)
-		div.dialog-bar
-			h4= '획득 경험치'
-			input#money-get(type='number', value=0, disabled)
-		div.dialog-bar.tail-button
-			button#money-ok= '교환'
-	+Dialog('PostDiag', 565, 425, '우편함')
-		div.dialog-bar(style='height: 390px; overflow-y: auto;'): table#postcontent(style='text-align: center;')
-			thead(style='font-weight: bold; background-color: #C5C5C5;'): tr
-				td(width=35)= '번호'
-				td(width=230)= '이름'
-				td(width=240)= '아이템'
-				td(width=60)= '수령'
-			tbody
 	+Dialog('SettingDiag', 300, 510, L('settingsText'))
-		//div.dialog-bar
-			h4= L('mute')
-			+SettingOption('mute-bgm', L('bgm'))
-			+SettingOption('mute-effect', L('effect'))
 		div.dialog-bar
 			h4= '거부 / 차단'
 			+SettingOption('deny-invite', L('denyInvite'))
@@ -218,7 +152,6 @@ block Middle
 			+SettingOption('deny-mention', '멘션')
 			h4
 			+SettingOption('deny-keyword', '키워드알림')
-			+SettingOption('deny-hwak', '확성기')
 		div.dialog-bar
 			h4= L('ingames')
 			+SettingOption('jang-moon', L('jangmoonDis'), "width: 200px;")
@@ -228,8 +161,6 @@ block Middle
 			+SettingOption('auto-ready', L('autoReady'), "width: 200px;")
 		div.dialog-bar
 			h4= L('etc')
-			//+SettingOption('yok-seol', L('yokFiltering'), "width: 200px;")
-			//h4
 			+SettingOption('req-exp', '필요 경험치로 표시', "width: 200px;")
 			h4
 			+SettingOption('sort-user', L('sortUser'), "width: 200px;")
@@ -251,10 +182,6 @@ block Middle
 			h4= '키워드알림 설정'
 			+SettingOption('ka-word', '단어')
 			+SettingOption('ka-icld', '포함')
-		//div.dialog-bar
-			h4= '사전 검색 설정'
-			+SettingOption('dt-gs', '게임 서버')
-			+SettingOption('dt-wb', '웹 서버')
 		div.dialog-bar
 			h4= '배경음악 선택'
 			select#pink-bgm
@@ -267,9 +194,6 @@ block Middle
 			input#pink-speed(type='number', min=0.2, max=2, step=0.05, value=1)
 		div.dialog-bar.tail-button
 			button#setting-ok= L('save')
-			//button#setting-server= L('changeServer')
-			button#setting-keyword= '키워드알림'
-			button#change-server= '서버 이동'
 	
 	+Dialog('ReportDiag', 400, 330, L('reportText'))
 		div.dialog-bar(style='height: 18px;')
@@ -293,16 +217,6 @@ block Middle
 			div#comm-friends
 		div.dialog-bar.tail-button
 			button#comm-friend-add= L('friendAdd')
-	+Dialog('KeywordDiag', 240, 175, '키워드 설정')
-		div.dialog-bar(style='height: 100px; overflow-y: scroll;')
-			div#key-words
-		div.dialog-bar.tail-button
-			button#keyword-add= '키워드 추가'
-	+Dialog('NicksetDiag', 300, 300)
-		div.dialog-bar(style='height: 225px; overflow-y: scroll;')
-			div#nick-users
-		div.dialog-bar.tail-button
-			button#nick-users-add= L('friendAdd')
 	+Dialog('LeaderboardDiag', 390, 450, L('leaderboard'))
 		div.dialog-bar(style='height: 350px;'): table#ranking(style='text-align: center;')
 			thead(style='font-weight: bold; background-color: #DDDDDD;'): tr
@@ -498,13 +412,7 @@ block Middle
 			input#dict-input(style='width: 283px;', placeholder=L('wpInput'), maxlength=200)
 		div.dialog-bar#dict-output(style='height: 195px; overflow-y: scroll; color: #BBBBBB; background-color: #111111;')
 		div.dialog-bar.tail-button
-			//select#dict-theme
-				//option(value="")= L('pickInjeong')
-				//- locals.KO_INJEONG.forEach(function(item){
-				//	option(value=item)= L('theme_' + item)
-				//- });
 			button#dict-search= L('SEARCH')
-			//button#dict-injeong= L('injeongReq')
 	+Dialog('InviteDiag', 300, 420, L('invite'))
 		div.invite-board(style='height: 355px; overflow-y: scroll;')
 		div.dialog-bar.tail-button
@@ -526,82 +434,6 @@ block Middle
 			div#ri-players(style='width: 100%;')
 		div.dialog-bar.tail-button
 			button#room-info-join= L('join')
-	+Dialog('EffectDiag', 220, 211, '아이템 효과')
-		div.dialog-bar
-			div.dialog-bar
-				h4(style='width: 100%;')= '아이템 효과'
-		div.dialog-bar
-			h4= '획득 경험치: '
-			h4.dialog-bar#ed-gexp(style='text-align: left; width: 90px; height: 8px;')
-		div.dialog-bar
-			h4= '획득 핑: '
-			h4.dialog-bar#ed-gmny(style='text-align: left; width: 90px; height: 8px;')
-		div.dialog-bar
-			h4= '분당 경험치: '
-			h4.dialog-bar#ed-hexp(style='text-align: left; width: 90px; height: 8px;')
-		div.dialog-bar
-			h4= '분당 핑: '
-			h4.dialog-bar#ed-hmny(style='text-align: left; width: 90px; height: 8px;')
-		div.dialog-bar.tail-button
-			button#ed-close= '닫기'
-	+Dialog('EnhanceDiag', 330, 315, '아이템 효과 강화')
-		div.dialog-bar#en-id(style='display: none;')
-		div.dialog-bar
-			div.dialog-bar
-				h4(style='width: 100%;')= '아이템 효과 강화'
-		div.jt-image#en-image(style='margin-left: 125px; width: 80px; height: 80px;')
-		div.dialog-bar
-			h4= '아이템명: '
-			h4.dialog-bar#en-name(style='text-align: left; width: 200px; height: 8px;')
-		div.dialog-bar
-			h4= '레벨: '
-			h4.dialog-bar#en-level(style='text-align: left; width: 200px; height: 8px;')
-		div.dialog-bar
-			h4= '성공 확률: '
-			h4.dialog-bar#en-percent(style='text-align: left; width: 200px; height: 8px;')
-		div.dialog-bar
-			h4= '효과: '
-			h4.dialog-bar#en-after(style='text-align: left; width: 220px; height: 8px;')
-		div.dialog-bar
-			h4= '비용: '
-			h4.dialog-bar#en-cost(style='text-align: left; width: 200px; height: 8px;')
-		div.dialog-bar.tail-button
-			button#enhance-start= '강화'
-	+Dialog('QuestDiag', 575, 205, '일일 미션')
-		div.dialog-bar
-			h4(id='mission1' style='width: 150px;')= '미션 1'
-			div.questGraph.quest-gauge(style='position: fixed; margin-left: 160px;')
-				div.questGraph-bar(id='qst1')
-			h4(id='per1' class='qsh4')= '0 / ?'
-			h4(id='stat1' class='qsh42')= '보상: '
-		div.dialog-bar
-		div.dialog-bar
-			h4(id='mission2' style='width: 150px;')= '-'
-			div.questGraph.quest-gauge(style='position: fixed; margin-left: 160px;')
-				div.questGraph-bar(id='qst2' style="width: 0px;")
-			h4(id='per2' class='qsh4')= '-'
-			h4(id='stat2' class='qsh42')= '-'
-		div.dialog-bar
-		div.dialog-bar
-			h4(id='mission3' style='width: 150px;')= '-'
-			div.questGraph.quest-gauge(style='position: fixed; margin-left: 160px;')
-				div.questGraph-bar(id='qst3' style="width: 0px;")
-			h4(id='per3' class='qsh4')= '-'
-			h4(id='stat3' class='qsh42')= '-'
-		div.dialog-bar
-		div.dialog-bar
-			h4(id='mission4' style='width: 150px;')= '-'
-			div.questGraph.quest-gauge(style='position: fixed; margin-left: 160px;')
-				div.questGraph-bar(id='qst4' style="width: 0px;")
-			h4(id='per4' class='qsh4')= '-'
-			h4(id='stat4' class='qsh42')= '-'
-		div.dialog-bar
-		div.dialog-bar
-			h4(id='mission5' style='width: 150px;')= '-'
-			div.questGraph.quest-gauge(style='position: fixed; margin-left: 160px;')
-				div.questGraph-bar(id='qst5' style="width: 0px;")
-			h4(id='per5' class='qsh4')= '-'
-			h4(id='stat5' class='qsh42')= '-'
 	+Dialog('ProfileDiag', 425, 365)
 		div.dialog-bar.profile-head
 		div.dialog-bar
@@ -629,12 +461,6 @@ block Middle
 		div.dialog-bar.tail-button
 			button#kick-vote-no= L('disagree')
 			button#kick-vote-yes= L('agree')
-	//+Dialog('pEventDiag', 300, 145, L('pAlert'))
-		div.dialog-bar(style='height: 72px')
-			div#pevent-content(style='min-height: 72px; display: table-cell; vertical-align: middle; text-align: center; height: 72px; width: 300px;')
-		div.dialog-bar.tail-button
-			button#peventq-ok= L('paOK')
-			button#pevent-refresh= '새로고침'
 	+Dialog('pAlertDiag', 300, 145, L('pAlert'))
 		div.dialog-bar(style='height: 72px')
 			div#palert-content(style='min-height: 72px; display: table-cell; vertical-align: middle; text-align: center; height: 72px; width: 300px;')
@@ -643,16 +469,6 @@ block Middle
 	+Dialog('pCaptchaDiag', 300, 175, L('pAlert'))
 		div.dialog-bar(style='height: 450px')
 			div#captcha-box(style='min-height: 75px; display: table-cell; vertical-align: middle; text-align: center; height: 145px; width: 300px;')
-	+Dialog('pServerDiag', 300, 145, L('pAlert'))
-		div.dialog-bar(style='height: 42px')
-			div#ms-content(style='min-height: 33px; display: table-cell; vertical-align: middle; text-align: center; height: 36px; width: 300px;')
-		select#m-server(style="width: 100%;")
-			option(value='default' disabled selected)= '서버 선택'
-			option(value='0')= '분홍'
-			option(value='1')= '꽃'
-			option(value='2')= '새싹'
-		div.dialog-bar.tail-button
-			button#move-go= '이동'
 	+Dialog('pJejeDiag', 300, 145, L('pAlert'))
 		div.dialog-bar(style='height: 72px')
 			div#pjeje-content(style='min-height: 72px; display: table-cell; vertical-align: middle; text-align: center; height: 72px; width: 300px;')
@@ -755,12 +571,6 @@ block Middle
 		div.dialog-bar.tail-button
 			h4= '언어 선택'
 			button#cf-compose= L('cfCompose')
-			select#cf-lang(style="width: 100px;")
-				option(value='all' selected)= '모두 보기'
-				option(value='ko')= '한국어만 보기'
-				option(value='en')= '영어만 보기'
-			h4= '검색'
-			input#cf-search(style="width: 30px;" maxlength=1 autocomplete=off placeholder="입력")
 	+Dialog('ChatLogDiag', 350, 500, L('chatLog'))
 		div#chat-log-board(style='height: 475px; font-size: 11px; overflow-y: scroll;')
 	+Dialog('ObtainDiag', 300, 200, L('notice'), true)
@@ -792,8 +602,6 @@ block Middle
 				div.category-filter.shop-type(id="shop-type-" + locals.CATEGORIES[i], value=v.join(','))= L('category_' + locals.CATEGORIES[i])
 			input#shop-search(placeholder=L('shopSearch'), style='width: 60px; height: 12px; font-size: 11px; border-radius: 7px; margin-bottom: 3px;')
 		div#shop-shelf(style='width: 100%; height: 305px; overflow-y: scroll;')
-	//+Product('Exchange')
-		//div#exchange-shelf(style='width: 100%; height: 305px; overflow-y: scroll;')
 	+Product('Room')
 		div.team-selector
 			div.team-button#team-0.team-0= L('teamSolo')

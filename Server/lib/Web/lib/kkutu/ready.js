@@ -17,6 +17,7 @@
  */
 var ky = { shift: false, ctrl: false, i: false };
 var cdn = "https://cdn.jsdelivr.net/gh/pink-flower/pink-kkutu@latest";
+var cdn2 = "https://cdn.jsdelivr.net/gh/pink-flower/pkmedia@latest";
 
 var ready = function ready(start, server){
 	var i;
@@ -29,16 +30,17 @@ var ready = function ready(start, server){
 		$data.PUBLIC = $("#PUBLIC").html() == "true";
 		$data.URL = $("#URL").html();
 		$data.version = $("#version").html();
-		/*try{
+		try{
 			$data.server = location.href.match(/\?.*s=(\d+)/)[1];
 		}catch(e){
 			$data.server = location.href.match(/\?.*server=(\d+)/)[1];
-		}*/
-		$data.server = $.cookie('server') || 0;
+		}
+		//$data.server = $.cookie('server') || 0;
 	}else{
 		$data.server = server || $data.server;
 	}
-	document.title = L['title'] + ' - ' + L['server_' + $data.server ];
+	document.title = L['title'] + ' - ' + L['server_' + $data.server];
+	if(!start) window.history.pushState({}, document.title, '?s=' + $data.server);
 	if(start){
 		$data.shop = {};
 		$data._okg = 0;
@@ -49,12 +51,12 @@ var ready = function ready(start, server){
 		$data._wblock = {};
 		$data._shut = {};
 		$data.usersR = {};
-		EXP.push(getRequiredScore(1));
+		/*EXP.push(getRequiredScore(1));
 		for(i=2; i<MAX_LEVEL; i++){
 			EXP.push(EXP[i-2] + getRequiredScore(i));
 		}
 		EXP[MAX_LEVEL - 1] = Infinity;
-		EXP.push(Infinity);
+		EXP.push(Infinity);*/
 		$stage = {
 			loading: $("#Loading"),
 			lobby: {
@@ -69,6 +71,8 @@ var ready = function ready(start, server){
 			talk: $("#Talk"),
 			chatBtn: $("#ChatBtn"),
 			menu: {
+				mission: $("#MissionBtn"),
+				post: $("#PostBtn"),
 				help: $("#HelpBtn"),
 				setting: $("#SettingBtn"),
 				community: $("#CommunityBtn"),
@@ -96,6 +100,7 @@ var ready = function ready(start, server){
 				gwalli: $("#GwalliBtn"),
 				renew: $("#RenewBtn"),
 				vol: $("#VolumeBtn"),
+				stat: $("#StatBtn")
 			},
 			dialog: {
 				enhance: $("#EnhanceDiag"),
@@ -212,7 +217,11 @@ var ready = function ready(start, server){
 					pSvselect: $("#m-server"),
 					pGo: $("#move-go"),
 				pVolume:  $("#VolumeDiag"),
-					pVolOK: $("#volume-ok")
+					pVolOK: $("#volume-ok"),
+				mission: $("#QuestDiag"),
+				post: $("#PostDiag"),
+				expChange: $("#ExpDiag"),
+				stat: $("#StatDiag")
 			},
 			box: {
 				chat: $(".ChatBox"),
@@ -253,7 +262,7 @@ var ready = function ready(start, server){
 		}
 		var jl = $("#mobile").html() == "true";
 		function loadLevel(){
-			var n = 1051;
+			var n = 2000;
 			var img = {};
 			for(var i=0; i<n; i++){
 				img[i] = new Image();
@@ -264,55 +273,56 @@ var ready = function ready(start, server){
 		}
 		if(!jl){
 			$data._soundList = [
-				{ key: "k", value: cdn + "/media/kkutu/k.mp3" },
-				{ key: "lobby", value: cdn + "/media/kkutu/LobbyBGM.mp3" },
-				{ key: "1st", value: cdn + "/media/kkutu/LobbyBGM_1st.mp3" },
-				{ key: "2nd", value: cdn + "/media/kkutu/LobbyBGM_2nd.mp3" },
-				{ key: "og", value: cdn + "/media/kkutu/LobbyBGM.mp3" },
-				{ key: "jaqwi", value: cdn + "/media/kkutu/JaqwiBGM.mp3" },
-				{ key: "jaqwiF", value: cdn + "/media/kkutu/JaqwiFastBGM.mp3" },
-				{ key: "game_start", value: cdn + "/media/kkutu/game_start.mp3" },
-				{ key: "round_start", value: cdn + "/media/kkutu/round_start.mp3" },
-				{ key: "fail", value: cdn + "/media/kkutu/fail.mp3" },
-				{ key: "timeout", value: cdn + "/media/kkutu/timeout.mp3" },
-				{ key: "lvup", value: cdn + "/media/kkutu/lvup.mp3" },
-				{ key: "Al", value: cdn + "/media/kkutu/Al.mp3" },
-				{ key: "success", value: cdn + "/media/kkutu/success.mp3" },
-				{ key: "missing", value: cdn + "/media/kkutu/missing.mp3" },
-				{ key: "mission", value: cdn + "/media/kkutu/mission.mp3" },
-				{ key: "kung", value: cdn + "/media/kkutu/kung.mp3" },
-				{ key: "horr", value: cdn + "/media/kkutu/horr.mp3" },
+				{ key: "k", value: cdn2 + "/kkutu/k.mp3" },
+				{ key: "lobby", value: cdn2 + "/kkutu/LobbyBGM.mp3" },
+				{ key: "1st", value: cdn2 + "/kkutu/LobbyBGM_1st.mp3" },
+				{ key: "2nd", value: cdn2 + "/kkutu/LobbyBGM_2nd.mp3" },
+				{ key: "og", value: 'https://cdn.jsdelivr.net/gh/pink-flower/pkmedia2@f9a438a5b7fd859e293fcbc59be19a75d5bbedf7/kkutu/LobbyBGM_Winter.mp3' },
+				{ key: "3rd", value: cdn2 + "/kkutu/LobbyBGM.mp3" },
+				{ key: "jaqwi", value: cdn2 + "/kkutu/JaqwiBGM.mp3" },
+				{ key: "jaqwiF", value: cdn2 + "/kkutu/JaqwiFastBGM.mp3" },
+				{ key: "game_start", value: cdn2 + "/kkutu/game_start.mp3" },
+				{ key: "round_start", value: cdn2 + "/kkutu/round_start.mp3" },
+				{ key: "fail", value: cdn2 + "/kkutu/fail.mp3" },
+				{ key: "timeout", value: cdn2 + "/kkutu/timeout.mp3" },
+				{ key: "lvup", value: cdn2 + "/kkutu/lvup.mp3" },
+				{ key: "Al", value: cdn2 + "/kkutu/Al.mp3" },
+				{ key: "success", value: cdn2 + "/kkutu/success.mp3" },
+				{ key: "missing", value: cdn2 + "/kkutu/missing.mp3" },
+				{ key: "mission", value: cdn2 + "/kkutu/mission.mp3" },
+				{ key: "kung", value: cdn2 + "/kkutu/kung.mp3" },
+				{ key: "horr", value: cdn2 + "/kkutu/horr.mp3" },
 			];
 		}else{
 			$data._soundList = [
-				{ key: "k", value: cdn + "/media/kkutu/k.mp3" },
-				{ key: "1st", value: cdn + "/media/low/LobbyBGM_1st.mp3" },
-				{ key: "2nd", value: cdn + "/media/low/LobbyBGM_2nd.mp3" },
-				{ key: "og", value: cdn + "/media/low/LobbyBGM.mp3" },
-				{ key: "jaqwi", value: cdn + "/media/kkutu/JaqwiBGM.mp3" },
-				{ key: "jaqwiF", value: cdn + "/media/kkutu/JaqwiFastBGM.mp3" },
-				{ key: "game_start", value: cdn + "/media/kkutu/game_start.mp3" },
-				{ key: "round_start", value: cdn + "/media/kkutu/round_start.mp3" },
-				{ key: "fail", value: cdn + "/media/kkutu/fail.mp3" },
-				{ key: "timeout", value: cdn + "/media/kkutu/timeout.mp3" },
-				{ key: "lvup", value: cdn + "/media/kkutu/lvup.mp3" },
-				{ key: "Al", value: cdn + "/media/kkutu/Al.mp3" },
-				{ key: "success", value: cdn + "/media/kkutu/success.mp3" },
-				{ key: "missing", value: cdn + "/media/kkutu/missing.mp3" },
-				{ key: "mission", value: cdn + "/media/kkutu/mission.mp3" },
-				{ key: "kung", value: cdn + "/media/kkutu/kung.mp3" },
-				{ key: "horr", value: cdn + "/media/kkutu/horr.mp3" },
+				{ key: "k", value: cdn2 + "/kkutu/k.mp3" },
+				{ key: "1st", value: cdn2 + "/low/LobbyBGM_1st.mp3" },
+				{ key: "2nd", value: cdn2 + "/low/LobbyBGM_2nd.mp3" },
+				{ key: "og", value: cdn2 + "/low/LobbyBGM.mp3" },
+				{ key: "jaqwi", value: cdn2 + "/kkutu/JaqwiBGM.mp3" },
+				{ key: "jaqwiF", value: cdn2 + "/kkutu/JaqwiFastBGM.mp3" },
+				{ key: "game_start", value: cdn2 + "/kkutu/game_start.mp3" },
+				{ key: "round_start", value: cdn2 + "/kkutu/round_start.mp3" },
+				{ key: "fail", value: cdn2 + "/kkutu/fail.mp3" },
+				{ key: "timeout", value: cdn2 + "/kkutu/timeout.mp3" },
+				{ key: "lvup", value: cdn2 + "/kkutu/lvup.mp3" },
+				{ key: "Al", value: cdn2 + "/kkutu/Al.mp3" },
+				{ key: "success", value: cdn2 + "/kkutu/success.mp3" },
+				{ key: "missing", value: cdn2 + "/kkutu/missing.mp3" },
+				{ key: "mission", value: cdn2 + "/kkutu/mission.mp3" },
+				{ key: "kung", value: cdn2 + "/kkutu/kung.mp3" },
+				{ key: "horr", value: cdn2 + "/kkutu/horr.mp3" },
 			]
 		}
 		for(i=0; i<=10; i++) $data._soundList.push(
-			{ key: "T"+i, value: cdn + "/media/kkutu/original/T"+i+".mp3" },
-			{ key: "K"+i, value: cdn + "/media/kkutu/K"+i+".mp3" },
-			{ key: "As"+i, value: cdn + "/media/kkutu/As"+i+".mp3" }
+			{ key: "T"+i, value: cdn2 + "/kkutu/original/T"+i+".mp3" },
+			{ key: "K"+i, value: cdn2 + "/kkutu/K"+i+".mp3" },
+			{ key: "As"+i, value: cdn2 + "/kkutu/As"+i+".mp3" }
 		);
 		loadSounds($data._soundList, function(){
 			processShop(connect);
 		});
-		delete $data._soundList;
+		//delete $data._soundList;
 		MOREMI_PART = $("#MOREMI_PART").html().split(',');
 		AVAIL_EQUIP = $("#AVAIL_EQUIP").html().split(',');
 		RULE = JSON.parse($("#RULE").html());
@@ -423,6 +433,14 @@ var ready = function ready(start, server){
 			$stage.dialog.pHand.hide();
 			lnc();
 			phReset();
+		});
+		$stage.menu.stat.on('click', function(e){
+			if($stage.dialog.stat.is(":visible")){
+				showDialog($stage.dialog.stat);
+			}else{
+				send('viewstat', undefined, true);
+				showDialog($stage.dialog.stat);
+			}
 		});
 		$("#enhance-start").click(function(){
 			pfConfirm('<b>' + en_info.ping + '</b>핑을 사용하여 강화를 시도합니다.<br>성공률은 <b>' + en_info.per + '</b>% 입니다.<br><br>강화하시겠습니까?', function(){ do_enhance(en_info.item); });
@@ -580,6 +598,7 @@ var ready = function ready(start, server){
 				ou: false,
 				ml: false,
 				rq: false,
+				tk: false,
 				ms: false,
 				bw: true,
 				mc: false,
@@ -592,6 +611,7 @@ var ready = function ready(start, server){
 				dt: false,
 				pl: false,
 				bs: 1,
+				hw: false
 			});
 			if(mod == 1) sCK('kks', encodeURIComponent(JSON.stringify($data.opts)), 1.5);
 			else localStorage.setItem('kks', JSON.stringify($data.opts));
@@ -704,6 +724,36 @@ var ready = function ready(start, server){
 			}else{
 				$target.css('color', "");
 			}
+		});
+		$("#money-use").on('input', function(e){
+			var $target = $(e.currentTarget);
+			var value = $target.val();
+			
+			if(value < 0 || value > 300000 || value > $data.users[$data.id].money){
+				$target.css('color', "#FF4444");
+				$("#money-get").val(0);
+				if(value > $data.users[$data.id].money){
+					$("#money-use").val($data.users[$data.id].money);
+					$target.css('color', "");
+					$("#money-get").val(calculateMoneytoExp($data.users[$data.id].money));
+					value = $data.users[$data.id].money;
+				}
+				if(value > 300000){
+					$("#money-use").val(300000);
+					$target.css('color', "");
+					$("#money-get").val(calculateMoneytoExp(300000));
+				}
+			}else{
+				$target.css('color', "");
+				$("#money-get").val(calculateMoneytoExp(value));
+			}
+		});
+		$("#money-ok").on('click', function(e){
+			var useMoney = $("#money-use").val();
+			if(useMoney <= 0) return;
+			pfConfirm('<b>'+commify(useMoney) + '</b>핑을 경험치 <b>' + convert(calculateMoneytoExp(useMoney)) + '</b> (으)로 교환합니다.<br>계속합니까?', function(){
+				send('changeExp', { value: useMoney }, undefined, true);
+			}, noFunc);
 		});
 		$("#room-round").on('change', function(e){
 			var $target = $(e.currentTarget);
@@ -845,8 +895,8 @@ var ready = function ready(start, server){
 		}));
 		setPFDialog();
 		setStage($stage);
-		var isvr = $.cookie('ksv') != '1';
-		if(isvr) showDialog($stage.dialog.svrule);
+		//var isvr = $.cookie('ksv') != '1';
+		//if(isvr) showDialog($stage.dialog.svrule);
 		//pfAlert(L['pfWelcome']);
 		//pfAlert();
 		/*makenewnick = function(){
@@ -886,12 +936,19 @@ var ready = function ready(start, server){
 				makenewnick();
 			}
 		}*/
-		$("#gwalli-board").attr('src', '/gwalli');
+		//$("#gwalli-board").attr('src', '/gwalli');
 		$stage.menu.help.on('click', function(e){
 			$("#help-board").attr('src', "/help");
 			showDialog($stage.dialog.help);
 		});
-		
+		$stage.menu.mission.on('click', function(e){
+			send('getMission', undefined, true);
+		});
+		$stage.menu.post.on('click', function(e){
+			send('refresh');
+			renderPost();
+			showDialog($stage.dialog.post);
+		});
 		$stage.menu.setting.on('click', function(e){
 			showDialog($stage.dialog.setting);
 		});
@@ -1037,7 +1094,13 @@ var ready = function ready(start, server){
 			$("#game-mode-expl").html(L['modex' + v]);
 
 			updateGameOptions(rule.opts, 'room');
-			
+			if(MODE[v]=='TAK'){
+				$("#room-round").hide();
+				$("#room-time").hide();
+			}else{
+				$("#room-round").show();
+				$("#room-time").show();
+			}
 			$data._injpick = [];
 			if(rule.opts.indexOf("ijp") != -1) $("#room-injpick-panel").show();
 			else $("#room-injpick-panel").hide();
@@ -1130,6 +1193,7 @@ var ready = function ready(start, server){
 			if(RULE[MODE[$data.room.mode]].ai){
 				$("#PracticeDiag .dialog-title").html(L['practice']);
 				$("#ai-team").val(0).prop('disabled', true);
+				$("#ai-status").val(1).prop('disabled', true);
 				showDialog($stage.dialog.practice);
 			}else{
 				send('practice', { level: -1 });
@@ -1148,9 +1212,9 @@ var ready = function ready(start, server){
 					/*if(mobile){
 						if(!confirm(L['sureExit'])) return;
 					}else{
-						return pfConfirm(L['sureExit'], function(){ clearGame(); send('leave'); });
+						return pfConfirm(L['sureExit'], function(){ clearGame(); send('leave', { force: true }); });
 					}*/
-					return pfConfirm(L['sureExit'], function(){ clearGame(); send('leave'); });
+					return pfConfirm(L['sureExit'], function(){ clearGame(); send('leave', { force: true }); });
 				}
 				if($data.room.gaming && $data.room.opts.exitblock){
 					alert(L['exitBlocked']);
@@ -1161,12 +1225,12 @@ var ready = function ready(start, server){
 					/*if(mobile){
 						if(!confirm(L['sureExit'])) return;
 					}else{
-						return pfConfirm(L['sureExit'], function(){ clearGame(); send('leave'); });
+						return pfConfirm(L['sureExit'], function(){ clearGame(); send('leave', { force: true }); });
 					}*/
-					return pfConfirm(L['sureExit'], function(){ clearGame(); send('leave'); });
+					return pfConfirm(L['sureExit'], function(){ clearGame(); send('leave', { force: true }); });
 				}
 			}
-			send('leave');
+			send('leave', { force: true });
 		});
 		$stage.menu.replay.on('click', function(e){
 			if($data._replay){
@@ -1307,6 +1371,8 @@ var ready = function ready(start, server){
 				dt: $("#dt-gs").is(":checked"),
 				pl: $("#pic-preload").is(":checked"),
 				bs: $("#pink-speed").val(),
+				tk: $("#tak-show").is(":checked"),
+				hw: $("#deny-hwak").is(":checked")
 			});
 			/*$.post("/cookie", { data: JSON.stringify($data.opts) }, function(res){
 				if(res.error) console.log(res.error);
@@ -1319,6 +1385,7 @@ var ready = function ready(start, server){
 		$stage.dialog.profileLevel.on('click', function(e){
 			$("#PracticeDiag .dialog-title").html(L['robot']);
 			$("#ai-team").prop('disabled', false);
+			$("#ai-status").prop('disabled', false);
 			showDialog($stage.dialog.practice);
 		});
 		$stage.dialog.pAlertOK.on('click', function(e){
@@ -1335,10 +1402,11 @@ var ready = function ready(start, server){
 		$stage.dialog.practiceOK.on('click', function(e){
 			var level = $("#practice-level").val();
 			var team = $("#ai-team").val();
+			var stat = $("#ai-status").val();
 			
 			$stage.dialog.practice.hide();
 			if($("#PracticeDiag .dialog-title").html() == L['robot']){
-				send('setAI', { target: $data._profiled, level: level, team: team });
+				send('setAI', { target: $data._profiled, level: level, team: team, stat: stat });
 			}else{
 				send('practice', { level: level });
 			}
@@ -1389,7 +1457,7 @@ var ready = function ready(start, server){
 			}
 			if($data.practicing){
 				$data.room.gaming = true;
-				send('leave');
+				send('leave', { force: true });
 			}
 			$data.resulting = false;
 			$stage.dialog.result.hide();
@@ -1463,6 +1531,38 @@ var ready = function ready(start, server){
 			if($stage.dialog.pEvent.is(":visible")){
 				$stage.dialog.pEvent.hide();
 			}else getevtKey();
+		});
+		$("#HwakBtn").on('click', function(e){
+			pfInput('접속하신 서버 전체에 보낼 말을 입력해주세요.', function(){
+				send('hwak', { value: $("#pinput-in").val() || "" }, true);
+			}, noFunc);
+		});
+		$("#ExpBtn").on('click', function(e){
+			showDialog($stage.dialog.expChange);
+		});
+		$("#plus-exp").on('click', function(e){
+			send('applystat', { target: 'exp', value: 1 }, true);
+		});
+		$("#plus-exp10").on('click', function(e){
+			send('applystat', { target: 'exp', value: 10 }, true);
+		});
+		$("#plus-mny").on('click', function(e){
+			send('applystat', { target: 'mny', value: 1 }, true);
+		});
+		$("#plus-mny10").on('click', function(e){
+			send('applystat', { target: 'mny', value: 10 }, true);
+		});
+		$("#plus-exp100").on('click', function(e){
+			send('applystat', { target: 'exp', value: 100 }, true);
+		});
+		$("#plus-mny100").on('click', function(e){
+			send('applystat', { target: 'mny', value: 100 }, true);
+		});
+		$("#stat-reset").on('click', function(e){
+			send('statreset', undefined, true);
+		});
+		$("#stat-close").on('click', function(e){
+			$("#StatDiag").hide();
 		});
 		$stage.dialog.peRefresh.on('click', function(e){
 			getevtKey();
@@ -1690,12 +1790,12 @@ var ready = function ready(start, server){
 			// alert(L['error_555']);
 			if($data.guest) return fail(421);
 			if($data._gaming) return fail(438);
-			if(showDialog($stage.dialog.dress)) $.get("/box", function(res){
+			if(showDialog($stage.dialog.dress)) send('box');/*$.get("/box", function(res){
 				if(res.error) return fail(res.error);
 				
 				$data.box = res;
 				drawMyDress();
-			});
+			});*/
 		});
 		var jsk = function(){
 			$.post("/reset", function(res){
@@ -1711,7 +1811,7 @@ var ready = function ready(start, server){
 		var fico = function(){
 			var kssv = $("#pinput-in").val();
 			if(kssv != '초기화') return pfAlert('올바르게 입력하지 않아 초기화가 취소되었습니다.');
-			pfConfirm('초기화 후 즉시 <b>서버와의 접속이 종료</b>되며,<br>오늘의 접속 보상은 <b>다시 받을 수 없습니다</b>.<br>또한, 현재 계정의 정보는 <b>복구할 수 없습니다</b>.<br><br><b>정말로 초기화하시겠습니까?</b>', jsk, function(){  });
+			pfConfirm('초기화 후 즉시 <b>서버와의 접속이 종료</b>되며</b>,<br>현재 계정의 정보는 <b>복구할 수 없습니다</b>.<br><br><b>정말로 초기화하시겠습니까?</b>', jsk, function(){  });
 		}
 		var ksk = function(){
 			pfInput('계정을 초기화하시려면 아래에<br><b>초기화</b> 라고 입력해주세요.', fico, function(){  });
@@ -1762,7 +1862,7 @@ var ready = function ready(start, server){
 			if(!$stage.dialog.cfCompose.hasClass("cf-composable")) return fail(436);
 			//if(!confirm(L['cfSureCompose'])) return;
 			pfConfirm(L['cfSureCompose'], function(){
-				$.post("/cf", { tray: $data._tray.join('|') }, function(res){
+				/*$.post("/cf", { tray: $data._tray.join('|') }, function(res){
 					var i;
 					
 					if(res.error) return fail(res.error);
@@ -1775,11 +1875,17 @@ var ready = function ready(start, server){
 					if($stage.dialog.dress.is(":visible")) drawMyDress($data._avGroup);
 					updateMe();
 					drawCharFactory();
-				});
+				});*/
+				send('cfReward', { tray: $data._tray.join('|') }, true);
 			}, function(){});
 		});
 
-		
+		$("#cf-lang").on('change', function(e){
+			drawCharFactory(true);
+		});
+		$("#cf-search").on('input', function(e){
+			drawCharFactory(true);
+		});
 		$("#room-injeong-pick").on('click', function(e){
 			var rule = RULE[MODE[$("#room-mode").val()]];
 			var i;
@@ -1876,7 +1982,8 @@ var ready = function ready(start, server){
 			$stage.dialog.pSvselect.val('default');
 		});
 		$stage.dialog.pGo.on('click', function(e){
-			if($data.room) return pfAlert('게임 중에는 서버를 이동할 수 없습니다.');
+			if($data.room) return pfAlert('방에서는 서버를 이동할 수 없습니다.');
+			if($data.server == 3) return pfAlert('이 서버에서는 서버를 이동할 수 없습니다.<br>메인 페이지에서 접속 해 주세요.');
 			var target = $stage.dialog.pSvselect.val();
 			if(target == $data.server || target == 'default') return;
 			var port = [8080, 8090, 8100];
@@ -1885,7 +1992,7 @@ var ready = function ready(start, server){
 			$stage.dialog.pServer.hide();
 			clearAllChat();
 			ws.close();
-			sCK('server', target, 14)
+			//sCK('server', target, 14)
 			ready(false, target);
 		});
 		$("#replay-file").on('change', function(e){

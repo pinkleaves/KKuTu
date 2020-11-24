@@ -142,6 +142,7 @@ exports.submit = function(client, text, data){
 					my.game.roundTime -= t;
 					client.game.score += score;
 					client.publish('turnEnd', {
+						cs: client.game.score,
 						ok: true,
 						value: text,
 						mean: $doc.mean,

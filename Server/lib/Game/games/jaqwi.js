@@ -143,6 +143,7 @@ exports.submit = function(client, text){
 		my.game.winner.push(client.id);
 		client.game.score += score;
 		client.publish('turnEnd', {
+			cs: client.game.score,
 			target: client.id,
 			ok: true,
 			value: text,
@@ -173,9 +174,9 @@ exports.getScore = function(text, delay){
 	var my = this;
 	var rank = my.game.hum - my.game.primary + 3;
 	var tr = 1 - delay / my.game.roundTime;
-	var score = 6 * Math.pow(rank, 1.4) * ( 0.5 + 0.5 * tr );
+	var score = 6 * Math.pow(rank, 1.2) * ( 0.5 + 0.5 * tr );
 
-	return Math.round(score * my.game.themeBonus);
+	return Math.round(score * my.game.themeBonus * 1.25);
 };
 exports.readyRobot = function(robot){
 	var my = this;

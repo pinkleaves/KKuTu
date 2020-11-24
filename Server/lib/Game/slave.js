@@ -54,7 +54,7 @@ const ENABLE_ROUND_TIME = Master.ENABLE_ROUND_TIME;
 const ENABLE_FORM = Master.ENABLE_FORM;
 const MODE_LENGTH = Master.MODE_LENGTH;
 
-JLog.info(`<< KKuTu Server:${Server.options.port} >>`);
+JLog.toConsole(`<< KKuTu Server:${Server.options.port} >>`);
 //JLog.info(`<< KKuTu Server >>`);
 process.on('uncaughtException', function(err){
 	var text = `:${process.env['KKUTU_PORT']} [${new Date().toLocaleString()}] ERROR: ${err.toString()}\n${err.stack}`;
@@ -66,6 +66,11 @@ process.on('uncaughtException', function(err){
 		JLog.error(`ERROR OCCURRED! This worker will die in 10 seconds.`);
 		console.log(text);
 	});
+	setTimeout(function(){
+		for(var i in DIC){
+			DIC[i].leave();
+		}
+	}, 3000);
 	setTimeout(function(){
 		process.exit();
 	}, 10000);
@@ -265,7 +270,7 @@ KKuTu.onClientMessage = function($c, msg){
 					}
 				}
 				if(msg.mode < 0 || msg.mode >= MODE_LENGTH) stable = false;
-				if(msg.round < 1 || msg.round > 15){
+				if(msg.round < 1 || msg.round > 10){
 					if(!$c.admin){
 						msg.code = 433;
 						stable = false;
@@ -284,7 +289,7 @@ KKuTu.onClientMessage = function($c, msg){
 		case 'leave':
 			if(!$c.place) return;
 			
-			$c.leave();
+			$c.leave(undefined, msg.force);
 			break;
 		case 'ready':
 			if(!$c.place) return;
@@ -400,7 +405,7 @@ KKuTu.onClientMessage = function($c, msg){
 			if(isNaN(msg.team = Number(msg.team))) return;
 			if(msg.team < 0 || msg.team > 4) return;
 			
-			ROOM[$c.place].setAI(msg.target, Math.round(msg.level), Math.round(msg.team));
+			ROOM[$c.place].setAI(msg.target, Math.round(msg.level), Math.round(msg.team), Math.round(msg.stat));
 			break;
 		case 'nickchange':
 			delete DNAME[msg.prev];
@@ -419,7 +424,7 @@ KKuTu.onClientMessage = function($c, msg){
 			$c.renew();
 			break;
 		case 'dict':
-			$c.dict(msg.word, msg.lang);
+			$c.dict(msg.word, msg.lang, msg.mode);
 			break;
 		case 'kdn':
 			$c.kdn();
@@ -429,6 +434,15 @@ KKuTu.onClientMessage = function($c, msg){
 			break;
 		case 'event':
 			$c.evtStat();
+			break;
+		case 'equip':
+			$c.reqEquip(msg.id, msg.isLeft);
+			break;
+		case 'box':
+			$c.reqBox();
+			break;
+		case 'cfView':
+			$c.cfView(msg.text, msg.level, msg.blend);
 			break;
 		default:
 			break;
