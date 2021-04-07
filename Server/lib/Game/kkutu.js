@@ -16,21 +16,28 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-const ClientVersion = '3.1.2';
+const ClientVersion = '4.1.3';
 var GUEST_PERMISSION;
+var noMode = [ "KDA", "KAD", "EDA", "EAD", "HUN", "KSD", "ESD" ];
+var QLast = {};
+var RoomLimit = {};
+var GLOBAL = require('../sub/global.json');
 var Cluster = require("cluster");
 var Const = require('../const');
 var Lizard = require('../sub/lizard');
 var GLOBAL = require('../sub/global.json');
 var ReqExp = require('../sub/reqexp');
 var JLog = require('../sub/jjlog');
+var Cron = require('node-cron');
 // 망할 셧다운제 var Ajae = require("../sub/ajae");
 var DB;
+var MS = GLOBAL.MASTER;
 var SHOP;
 var DIC;
 var ROOM;
 var _rid;
 var chatblocked = false;
+var _roomblocked = false;
 var Rule;
 var guestProfiles = [];
 var CHAN;
@@ -40,13 +47,19 @@ var ridch = false;
 var SLOW = 0;
 var DoS = {};
 var Hwak = {};
+var Penalty = {};
+var Last = {};
+var rLast = {};
+var LastAct = {};
+var isJamsuAvailable = true;
+var jamsuDown = true;
 const NUM_SLAVES = 4;
 const GUEST_IMAGE = "/img/kkutu/guest.png";
 const MAX_OKG = 18;
 const ALL_OKG = 288;
 const PER_OKG = 300000;
 const MAX_MISSION = 3;
-const hyogwa = [120, 125, 150, 190, 220, 260, 300, 340, 400, 500, 500];
+const hyogwa = [120, 125, 150, 190, 220, 260, 300, 340, 400, 500, 600, 800, 1000, 1250, 1500, 2000, 2500, 3000, 3750, 5000, 5000];
 const MISSION_ALL = [
 	[ 'Enter', 1 ],
 	[ 'ClearALL', 4 ]
@@ -69,7 +82,7 @@ function assignMission(){
 		
 		a: 횟수 (or 시간)
 		b: 난이도
-		c: 보상 방식 0: EXP 1: MNY 2: ETC 3: EXP/MNY (Developing)
+		c: 보상 방식 0: EXP 1: MNY 2: ETC 3: EXP MNY (Developing)
 	*/
 	var used = [];
 	MISSION.push({ name: MISSION_ALL[0][0], reward: 3, level: 0, goal: 1, success: false, now: 1 });
@@ -88,18 +101,33 @@ function assignMission(){
 	//MISSION.push({ name: MISSION_ALL[1][0], reward: 3, level: 0, goal: 4, success: false, now: 0 });
 	return MISSION;
 }
-function levelBonus(level){
-var lvbonus = level>=2000?0:Math.floor(level/1);
-if(level>=1000) lvbonus+=level>=2000?0:Math.floor(((level-1000)*15));
-if(level>=1000&&level<2000) lvbonus+=36000;
-if(level>=1100&&level<2000) lvbonus+=36000;
-if(level>=1200&&level<2000) lvbonus+=36000*1.5;
-if(level>=1300&&level<2000) lvbonus+=36000;
-if(level>=1400&&level<2000) lvbonus+=36000*1.5;
-if(level>=1500&&level<2000) lvbonus+=36000*1.5;
-if(level>=1750&&level<2000) lvbonus+=36000;
-if(level>=1900&&level<2000) lvbonus+=72000;
-return lvbonus;
+function levelBonus(level, evt){
+	if(evt){
+		var lvbonus = level>=2000?0:level*5;
+		if(level>=1000) lvbonus+=level>=2000?0:Math.floor(((level-1000)*15));
+		if(level>=1000&&level<2000) lvbonus+=36000*2.5;
+		if(level>=1100&&level<2000) lvbonus+=36000*4;
+		if(level>=1200&&level<2000) lvbonus+=36000*8;
+		if(level>=1300&&level<2000) lvbonus+=36000*12;
+		if(level>=1400&&level<2000) lvbonus+=36000*20;
+		if(level>=1500&&level<2000) lvbonus+=36000*50;
+		if(level>=1600&&level<2000) lvbonus+=36000*25;
+		if(level>=1700&&level<2000) lvbonus+=36000*25;
+		if(level>=1800&&level<2000) lvbonus+=36000*30;
+		if(level>=1900&&level<2000) lvbonus+=72000*75;
+	}else{
+		var lvbonus = level>=2000?0:level*5;
+		if(level>=1000) lvbonus+=level>=2000?0:Math.floor(((level-1000)*15));
+		if(level>=1000&&level<2000) lvbonus+=36000*2;
+		if(level>=1100&&level<2000) lvbonus+=36000*4;
+		if(level>=1200&&level<2000) lvbonus+=36000*10;
+		if(level>=1300&&level<2000) lvbonus+=36000*15;
+		if(level>=1400&&level<2000) lvbonus+=36000*20;
+		if(level>=1500&&level<2000) lvbonus+=36000*25;
+		if(level>=1750&&level<2000) lvbonus+=36000*50;
+		if(level>=1900&&level<2000) lvbonus+=72000*100;
+	}
+	return evt ? lvbonus * 1.4 : lvbonus*1.5;
 }
 function checkDoS(ses){
 	var K = false;
@@ -132,7 +160,7 @@ exports.init = function(_DB, _DIC, _ROOM, _GUEST_PERMISSION, _CHAN){
 	ROOM = _ROOM;
 	GUEST_PERMISSION = _GUEST_PERMISSION;
 	CHAN = _CHAN;
-	_rid = 1;
+	_rid = Math.floor(Math.random() * 999) + 1;
 	// 망할 셧다운제 if(Cluster.isMaster) setInterval(exports.processAjae, 60000);
 	DB.kkutu_shop.find().on(function($shop){
 		SHOP = {};
@@ -147,6 +175,26 @@ exports.init = function(_DB, _DIC, _ROOM, _GUEST_PERMISSION, _CHAN){
 		Rule[k] = require(`./games/${k.toLowerCase()}`);
 		Rule[k].init(DB, DIC);
 	}
+};
+exports.initWords = function(DB, lang){
+	var Lang = [ "ko", "en" ], Redis = DB.kkt[lang], v, w = 0, x, y;
+	if(!Lang.includes(lang)) return console.log(`Invalid Language ${lang}`);
+	Redis.flush().then(function(){
+		DB.kkutu[lang].find().on(function($w){
+			y = Object.keys($w).length;
+			console.log(`[InitWords] Lang: ${lang}, Length: ${y}`);
+			for(i in $w){
+				v = $w[i];
+				delete v.hit; // 필요없다.
+				delete v.flag;
+				Redis.hPut(v._id, JSON.stringify(v)).then(function(res){
+					x = (100*(w/y)).toFixed(3)+"%";
+					w++;
+					if(w == y || (w % 100) === 0) console.log(`Processing: ${w}/${y} [${x}]`);
+				});
+			}
+		});
+	});
 };
 /* 망할 셧다운제
 exports.processAjae = function(){
@@ -206,17 +254,43 @@ exports.liblish = function(type, data, _room){
 		DIC[i].send(type, data);
 	}
 };
+function botLevel(lv){
+	if(lv === -1) return "구경꾼";
+	if(lv === 0) return "왕초보";
+	if(lv === 1) return "초보";
+	if(lv === 2) return "적절";
+	if(lv === 3) return "고수";
+	if(lv === 4) return "사기";
+	else return "?";
+}
+function defaultData(){
+	let v = {};
+	for(i in Const.GAME_TYPE){
+		v[j = Const.GAME_TYPE[i]] = [0, 0, 0, 0];
+		//v.record[j][3] = 0;
+	}
+	return v;
+}
 exports.Robot = function(target, place, level){
 	var my = this;
 	
+	my.nickname = "끄투 봇";
 	my.id = target + place + Math.floor(Math.random() * 1000000000);
 	my.robot = true;
 	my.game = { ready: true };
 	my.Stats = true;
-	my.data = {};
+	my.data = { record: defaultData() };
 	my.place = place;
 	my.target = target;
-	my.equip = { robot: true };
+	my.equip = {
+		robot: true,
+		Mskin: "robotskin",
+	};
+	my.profile = {
+		image: "",
+		nickname: my.nickname,
+		title: my.nickname
+	};
 	my.getData = function(){
 		return {
 			id: my.id,
@@ -228,6 +302,10 @@ exports.Robot = function(target, place, level){
 			equip: my.equip,
 			level: my.level,
 			ready: my.Stats,
+			profile: my.profile,
+			score: my.score,
+			goal: my.goal,
+			aiLevel: level
 		};
 	};
 	my.setStat = function(key){
@@ -245,8 +323,24 @@ exports.Robot = function(target, place, level){
 		}
 	}
 	my.setLevel = function(level){
+		my.nickname = botLevel(level) + " 끄투 봇";
 		my.level = level;
-		my.data.score = Math.pow(10, level + 2);
+		let exp = ReqExp.process();
+		let mLv = 1;
+		if(level == -1) mLv = 1;
+		if(level == 0) mLv = 1 + Math.floor(Math.random()*360);
+		if(level == 1) mLv = 360 + Math.floor(Math.random()*360);
+		if(level == 2) mLv = 720 + Math.floor(Math.random()*281);
+		if(level == 3) mLv = 1200 + Math.floor(Math.random()*301);
+		if(level == 4) mLv = 1500 + Math.floor(Math.random()*126);
+		my.level = mLv;
+		my.score = Math.floor((exp[mLv-1] || 0) * Math.random());
+		my.goal = Math.floor((exp[mLv] || 0));
+		my.profile = {
+			image: "",
+			nickname: my.nickname,
+			title: my.nickname
+		};
 	};
 	my.setTeam = function(team){
 		my.game.team = team;
@@ -311,7 +405,17 @@ exports.WebServer = function(socket){
 			case 'anotice':
 				exports.publish('notice', { value: msg.value, noXSS: msg.noXSS });
 				break;
+			case 'access':
+				var w;
+				if(w = DIC[GLOBAL.MASTER]){
+					w.send('notice', { value: `Access: [#${msg.id}] (${msg.nickname}, ${msg.ip})` });
+				}
+				break;
+			case 'narrate-levelup':
+				exports.narrate(msg.list, 'levelup', { user: msg.user, value: msg.value });
+				break;
 			default:
+				break;
 		}
 	};
 	socket.on('message', my.onWebServerMessage);
@@ -341,6 +445,7 @@ exports.Client = function(socket, profile, sid){
 			delete my.profile.sid;
 
 			if(my.profile.title) my.profile.name = "anonymous";
+			my.profile.title = my.nickname || my.profile.title;
 		}else{
 			gp = guestProfiles[Math.floor(Math.random() * guestProfiles.length)];
 			
@@ -353,7 +458,10 @@ exports.Client = function(socket, profile, sid){
 				image: GUEST_IMAGE
 			};
 			my.nickname = my.profile.title;
+			my.bot = false;
 		}
+		my.inGame = false;
+		my.prev = 0;
 		my.socket = socket;
 		my.place = 0;
 		my.team = 0;
@@ -406,7 +514,7 @@ exports.Client = function(socket, profile, sid){
 		
 			if(JSON.parse(msg).type !== 'kdn') JLog.log(`[${ipAddr}] Chan @${channel} Msg #${my.id}: ${(JSON.parse(msg).type === 'drawingCanvas' ? 'is drawing data' : msg)}`);
 			try{ data = JSON.parse(msg); }catch(e){ data = { error: 400 }; }
-			if(Cluster.isWorker) process.send({ type: "tail-report", id: my.id, chan: channel, place: my.place, msg: data.error ? msg : data });
+			if(Cluster.isWorker && data.type !== 'refresh') process.send({ type: "tail-report", id: my.id, chan: channel, place: my.place, msg: data.error ? msg : data });
 			
 			exports.onClientMessage(my, data);
 		});
@@ -454,6 +562,11 @@ exports.Client = function(socket, profile, sid){
 				o.exordial = my.exordial;
 				o.nickname = my.nickname;
 				o.enhance = my.enhance;
+				o.bot = my.bot;
+				o.goal = ReqExp.process()[my.level-1] || ReqExp.process()[0];
+				o.evtMoney = my.evtMoney;
+				o.score = Number(my.score || 0);
+				o.level = Number(my.level || 1);
 				o.admin = GLOBAL.ADMIN.indexOf(o.id)!=-1;
 			}
 			return o;
@@ -467,14 +580,46 @@ exports.Client = function(socket, profile, sid){
 		my.sendError = function(code, msg){
 			my.send('error', { code: code, message: msg });
 		};
+		my.checkJamsu = function(time, rid){
+			my.JamsuPlace = Number(rid);
+			my.JamsuTimer = setTimeout(function(){
+				if(my){
+					if(my.place == my.JamsuPlace){
+						if(DIC[MS]) DIC[MS].send('notice', { value: `[Jamsu] #${my.id} No Response #2` });
+						my.send('byeroom', { id: my.JamsuPlace });
+						my.leave();
+					}
+				}
+			}, (time+2.5) * 1000);
+		};
+		my.JamsuCallback = function(v){
+			clearTimeout(my.JamsuTimer);
+			if(!v){
+				if(DIC[MS]) DIC[MS].send('notice', { value: `[Jamsu] #${my.id} Pass` });
+				my.send('notice', { value: '잠수 테스트에 통과하셨습니다.' });
+			}else{
+				if(DIC[MS]) DIC[MS].send('notice', { value: `[Jamsu] #${my.id} No Response #1` });
+				if(my.place == my.JamsuPlace){
+					my.leave();
+					my.send('byeroom', { id: my.JamsuPlace });
+				}
+			}
+		};
 		my.publish = function(type, data, noBlock, spamCheck){
+			if(type == "turnError" && my.noChat){
+				if(data && data.value) data.value = "";
+			}
 			var i;
 			var now = new Date(), st = now - my._pub;
-			if(type != 'kdn'){
+			if(my.bot && my.place) st *= 1.5;
+			if(type != 'kdn' && (!my.place || my.place && my.place > 0)){
 				if((type == 'chat' && spamCheck) || type != 'chat'){
 					if(st <= Const.SPAM_ADD_DELAY) my.spam++;
-					else if(st >= Const.SPAM_CLEAR_DELAY) my.spam = 0;
-					if(my.spam >= Const.SPAM_LIMIT){
+					else if(st >= Const.SPAM_CLEAR_DELAY){
+						my.spam = 0;
+						my.blocked = false;
+					}
+					if(my.spam >= ((my.bot || (my.place && ROOM[my.place] && ROOM[my.place].opts.dobae)) && my.place ? Const.SPAM_LIMIT * 1.75 : Const.SPAM_LIMIT)){
 						if(!my.blocked) my.numSpam = 0;
 						my.blocked = true;
 					}
@@ -494,6 +639,8 @@ exports.Client = function(socket, profile, sid){
 			}
 			try{if(type == 'chat' && data.value == '') return;}catch(e){}
 			data.profile = my.profile;
+			data.profile.title = my.nickname;
+
 			if(my.subPlace && type != 'chat') my.send(type, data);
 			else for(i in DIC){
 				if(DIC[i].place == my.place) DIC[i].send(type, data);
@@ -504,8 +651,12 @@ exports.Client = function(socket, profile, sid){
 			var GLOBAL = require('../sub/global.json');
 			var admincheck = GLOBAL.ADMIN.indexOf(my.id) != -1;
 			var mgmtcheck = GLOBAL.MGMTUSER.indexOf(my.id) != -1;
-			if(my.publish('chat', { value: '', notice: false }, undefined, true) == true) return my.send('blocked');
-			if(my.noChat) return my.send('chat', { notice: true, code: 443 });
+			var du, da = "";
+			//if(my.publish('chat', { value: '', notice: false }, undefined, true) == true) return my.send('blocked');
+			if(my.noChat || (my.noLobby && !my.place)){
+				my.send('notice', { value: '채팅을 이용할 수 없습니다.' });
+				return;
+			}
 			if(!my.place) my.send('slow', { q: SLOW });
 			else if(my.place){
 				let $room = ROOM[my.place];
@@ -529,13 +680,29 @@ exports.Client = function(socket, profile, sid){
 			}
 			if(msg == '#CHATBLOCK ON'){
 				if(admincheck || mgmtcheck){
+					my.send('notice', { value: 'Chat Block ON' });
 					chatblocked = true;
 					return;
 				}
 			}
 			if(msg == '#CHATBLOCK OFF'){
 				if(admincheck || mgmtcheck){
+					my.send('notice', { value: 'Chat Block OFF' });
 					chatblocked = false;
+					return;
+				}
+			}
+			if(msg == '#ROOMBLOCK ON'){
+				if(admincheck || mgmtcheck){
+					my.send('notice', { value: 'Room Block ON' });
+					_roomblocked = true;
+					return;
+				}
+			}
+			if(msg == '#ROOMBLOCK OFF'){
+				if(admincheck || mgmtcheck){
+					my.send('notice', { value: 'Room Block OFF' });
+					_roomblocked = false;
 					return;
 				}
 			}
@@ -596,9 +763,9 @@ exports.Client = function(socket, profile, sid){
 			if(admincheck) return my.publish('chat', { value: msg, notice: code ? true : false, code: code });
 			var kk = new Date();
 			var mn = kk.getTime() / 1000;
-			if(mn - my.last < SLOW && !my.place){
-				var slo = SLOW - (mn - my.last);
-				slo = slo >= 1 ? Math.floor((SLOW - (mn - my.last))) : Math.floor((SLOW - (mn - my.last)) * 10) / 10;
+			if(mn - Last[my.id] < SLOW && !my.place){
+				var slo = SLOW - (mn - Last[my.id]);
+				slo = slo >= 1 ? Math.floor((SLOW - (mn - Last[my.id]))) : Math.floor((SLOW - (mn - Last[my.id])) * 10) / 10;
 				if(slo < 0.1) slo = '잠시 후';
 				else slo = String(slo) + '초 후';
 				return my.send('notice', { value: `슬로우 모드가 적용되었습니다. ${slo}에 채팅이 가능합니다.` });
@@ -606,20 +773,20 @@ exports.Client = function(socket, profile, sid){
 			try{
 				if(my.place){
 					let $room = ROOM[my.place];
-					if(mn - my.roomlast < $room.slow){
-						var slo = $room.slow - (mn - my.roomlast);
-						slo = slo >= 1 ? Math.floor(($room.slow - (mn - my.roomlast))) : Math.floor(($room.slow - (mn - my.roomlast)) * 10) / 10;
+					if(mn - rLast[my.id] < $room.slow){
+						var slo = $room.slow - (mn - rLast[my.id]);
+						slo = slo >= 1 ? Math.floor(($room.slow - (mn - rLast[my.id]))) : Math.floor(($room.slow - (mn - rLast[my.id])) * 10) / 10;
 						if(slo < 0.1) slo = '잠시 후';
 						else slo = String(slo) + '초 후';
 						return my.send('notice', { value: `슬로우 모드가 적용되었습니다. ${slo}에 채팅이 가능합니다.` });
 					}
-					my.roomlast = kk.getTime() / 1000;
+					rLast[my.id] = kk.getTime() / 1000;
 				}
 			}catch(e){
 				
 			}
 			//var kk = new Date();
-			my.last = kk.getTime() / 1000;
+			Last[my.id] = kk.getTime() / 1000;
 			/*try{
 				if(r){
 					if(r == "r"){
@@ -640,29 +807,83 @@ exports.Client = function(socket, profile, sid){
 		my.kdn = function(){
 			//my.publish('kdn', { id: my.id });
 		};
-		my.hwak = function(msg){
+		my.levelup = function(v){
+			var GLOBAL = require('../sub/global.json');
+			if(!my.admin) return;
+			if(GLOBAL.MASTER !== my.id) return;
+			v = Number(v);
+			if(!v || isNaN(v) || (v % 1) || v < 1 || v > 2000) return my.send('notice', { value: "Input correct value. #1" });
+			var w = ReqExp.getLevel(my.data.score);
+			if(w + v > 2000) return my.send('notice', { value: 'Input correct value. #2' });
+			var t = ReqExp.process();
+			var k = (t[(w+v)-2] || t[0]) - my.data.score;
+			var p = Number(my.data.score) + k;
+			my.data.score = p;
+			var x = ReqExp.getLevel(my.data.score);
+			DB.users.update([ '_id', my.id ]).set([ 'kkutu', my.data ]).on(function(){
+				my.processLevelNotice(w, x, my.nickname);
+				my.send('notice', { value: 'Obtained EXP: '+commify(k) });
+				my.send('updateme', { kkutu: my.data });
+				return;
+			});
+		};
+		my.hwak = function(msg, item){
+			
+			if(my.box && my.box[item]){
+				item = my.box[item];
+				item.enhance = my.enhance[item] || 0;
+			}else item = undefined;
+			
 			if(my.guest) return;
 			if(!msg || msg.replace(/\s/g, '') == "") return;
 			msg = msg.substr(0, 200);
+			if(my.noChat) return my.send('notice', { value: '확성기를 이용할 수 없습니다.' });
 			if(Cluster.isMaster){
 				DB.users.findOne([ '_id', my.id ]).on(function($hwak){
 					if(!$hwak) return;
 					if(!$hwak.fingerprint || $hwak.fingerprint == null || $hwak.fingerprint == undefined) return;
-					var fp = $hwak.fingerprint;
+					//var fp = $hwak.fingerprint;
+					var fp = my.socket.upgradeReq.headers['x-forwarded-for'];
 					var Time = new Date().getTime();
 					var prev;
 					if(prev = Hwak[fp]){
-						if(Time - Number(prev) < 300000) return my.send('notice', { value: '확성기는 5분에 1회 사용 가능합니다.' });
+						if(Time - Number(prev) < 300000 && !my.admin) return my.send('notice', { value: '확성기는 5분에 1회 사용 가능합니다.' });
 						else{
 							Hwak[fp] = Time;
-							exports.publish('hwak', { value: msg, sender: my.id });
+							exports.publish('hwak', { value: msg, sender: my.id, item: item });
 						}
 					}else{
-						Hwak[fp]=Time;
-						exports.publish('hwak', { value: msg, sender: my.id });
+						Hwak[fp] = Time;
+						exports.publish('hwak', { value: msg, sender: my.id, item: item });
 					}
 				});
 			}
+		};
+		my.postItem = function(item, cost){
+			my.checkExpire();
+			if(my.guest) return;
+			if(!my.box[item]) return;
+			if(!my.fingerprint) return;
+			var Id = Math.floor(Date.now()+(Math.random()*100000000));
+			DB.trade.findOne([ '_id', Id ]).on(function(_tr){
+				var sx;
+				if(_tr) return;
+				else{
+					DB.trade.insert(
+						[ '_id', Id ],
+						[ 'cost', Number(cost) ],
+						[ 'item', item ],
+						[ 'due', Date.now() + 60 * 60 * 24 * 1000 ],
+						[ 'expire', (sx = my.box[item].expire) ? sx : -1 ],
+						[ 'user', { id: my.id, pf: my.fingerprint } ],
+						[ 'finished', false ],
+						[ 'enhance', my.enhance[item] || 0 ]
+					).on(function($done){
+						delete my.box[item];
+						my.flush(my.box);
+					});
+				}
+			});
 		};
 		my.checkExpire = function(){
 			var now = new Date();
@@ -721,6 +942,54 @@ exports.Client = function(socket, profile, sid){
 			}
 		};
 		my.rank = function(id, pg, type){
+			if(type === "redis"){
+				type = "redis2";
+				let db = DB[type], t, v = [], temp, cor = !1, rnk, send = [], lk = 0;
+				
+				db.getAll(true).then(function($v){
+					try{
+					for(t in $v){
+						temp = JSON.parse($v[t]);
+						temp.id = t;
+						v.push(temp);
+					}
+					v.sort(function(a, b){
+						if(b.level == a.level) return b.score - a.score;
+						else return b.level-a.level;
+					});
+					for(t in v){
+						temp = v[t];
+						temp.rank = Number(lk);
+						v[lk] = temp;
+						lk+=1;
+					}
+					for(var i=(pg*15); i<(15*pg)+15; i++){
+						if(v[i]) send.push(v[i]);
+						else break;
+					}
+					my.send('rankData', { data: send });
+					if(id){
+						return my.send('notice', { value: '일시적으로 사용이 제한된 기능입니다.' });
+						for(t in v){
+							if(v[t].id == id){
+								cor = true;
+								rnk = v[t].rank;
+								break;
+							}
+						}
+						if(cor){
+							for(var i=0; i<15; i++){
+								if(v[rnk]) send.push(v[rnk]);
+								rnk += 1;
+							}
+							return my.send('rankData', { data: v });
+						}
+					}
+					}catch(e){console.log(e);}
+				});
+				return;
+			}
+			if(!DB[type] || !DB[type].getPage) return;
 			if(id){
 				DB[type].getSurround(id, 15).then(function($body){
 					if($body){
@@ -781,27 +1050,296 @@ exports.Client = function(socket, profile, sid){
 		my.checkClientVersion = function(){
 			my.send('getVersion', { value: true });
 			setTimeout(function(){
-				if(my.hasOwnProperty('ClientVersion')){
-					if(my.ClientVersion != ClientVersion) return my.send('notice', { value: '적용되지 않은 클라이언트 패치/업데이트가 있습니다. Shift+F5를 클릭하여 재접속을 하시면 적용됩니다.' });
-				}else{
+				if(!my.hasOwnProperty('ClientVersion')){
 					return my.send('notice', { value: '클라이언트 버전 정보를 확인할 수 없습니다. 정상적인 서비스 이용을 위해 가급적 재접속을 진행하여 주시기 바랍니다.' });
 				}
-			}, 3000);
+			}, 7500);
 		};
 		my.checkCallback = function(ver){
 			my.ClientVersion = ver == 'SKKuTu' ? ClientVersion : ver;
+			if(my.ClientVersion != ClientVersion) return my.send('yell', { value: '적용되지 않은 클라이언트 패치/업데이트가 있습니다.<br>Shift+F5를 클릭하여 재접속을 하시면 적용됩니다.' });
 		};
-		my.refresh = function(){
+		my.renderRes = function(data, clear, me){
+			delete data.data._id;
+			data.data.acv = {value:clear||0,level:data.data.acv.level};
+			data.data.lvl = {value:my.level,level:data.data.lvl.level};
+			data.data.enc = {value:Number(me.encmoney||0),level:data.data.enc.level};
+			data.data.etr = {value:Number(me.enctry||0),level:data.data.etr.level};
+			data.data.acs = {value:Number(me.chulseok||0),level:data.data.acs.level};
+			return data;
+		};
+		my.getClears = function($av, acv, res){
+			var _av = $av, _acv = acv, _res = res, i, cType, cur, cl = 0;
+			for(i in _acv){
+				if(!_av[i]) _av[i] = {};
+				if(!_av[i].level) _av[i].level = 0;
+				if(!_av[i].value) _av[i].value = 0;
+				cType = _acv[i][0].type;
+				_acv[i].sort(function(a,b){return a.goal-b.goal});
+				pri = _res.data[i].level;
+				for(var j=0; j<_acv[i].length; j++){
+					cur = _acv[i][j];
+					if(cur.goal<=_res.data[i].value){
+						cl++;
+					}
+				}
+			}
+			return cl;
+		};
+		my.checkAcv = function(force){//force: 사용자가 직접 과제를 요청했는가?
+			if(my.guest) return;
+			var i, v, q, acv = {}, _acv = [], cType, cur, pri, reward = { exp: 0, mny: 0, etc: {} }, isReward = false, clears = 0;
+			DB.users.findOne([ '_id', my.id ]).on(function($me){
+				my.initAcv(force).then(function(res){
+					if(!res.s) return;
+					DB.acv.find().on(function($av){
+						for(i in $av){
+							v = $av[i];
+							if(!acv[v.type]) acv[v.type] = [v];
+							else acv[v.type].push(v);
+						}
+						clears = my.getClears($av, acv, res);
+						res = my.renderRes(res, clears, $me);
+						//console.log('#'+my.id);
+						//console.log(res);
+						try{
+							for(i in acv){
+								if(!$av[i]) $av[i] = {};
+								if(!$av[i].level) $av[i].level = 0;
+								if(!$av[i].value) $av[i].value = 0;
+								cType = acv[i][0].type;
+								acv[i].sort(function(a,b){return a.goal-b.goal});
+								//1단계부터 순차적으로 확인한다.
+								pri = res.data[i].level;
+								for(var j=0; j<acv[i].length; j++){
+									if((j+1)<=pri) continue;//현 단계보다 res.data의 단계가 높으면..
+									cur = acv[i][j];//현재 레벨의 요구 수치이다.
+									if(cur.goal<=res.data[i].value){
+										// 도전 과제가 완료되었다!
+										isReward = true;
+										if(cur.reward){
+											reward.exp += cur.reward.exp || 0;
+											reward.mny += cur.reward.mny || 0;
+											if(cur.reward.etc){
+												for(q in cur.reward.etc){
+													reward.etc[q] = reward.etc[q] ? reward.etc[q] + 1 : 1;
+												}
+											}
+										}
+										res.data[i].level = (Number(res.data[i].level || 0) || 0) + 1;
+										my.send('acv', { acv: acv[i][j]._id });
+										DB.acv.update([ '_id', acv[i][j]._id ]).set([ 'clear', (Number(acv[i][j].clear) || 0) + 1 ]).on();
+									}
+								}
+							}
+							DB.uacv.update(["_id",my.id]).set(res.data).on();
+						}catch(e){
+							JLog.toConsole(`Error Occurred on Acv / Ignored current Check.`);
+							console.log(e.toString());
+							return;
+						}
+						try{
+							for(i in acv){
+								if(!$av[i]) $av[i] = {};
+								if(!$av[i].level) $av[i].level = 0;
+								if(!$av[i].value) $av[i].value = 0;
+								cType = acv[i][0].type;
+								acv[i].sort(function(a,b){return a.goal-b.goal});
+								//1단계부터 순차적으로 확인한다.
+								pri = res.data[i].level;
+								for(var j=0; j<acv[i].length; j++){
+									if((j+1)<=pri) continue;//현 단계보다 res.data의 단계가 높으면..
+									cur = acv[i][j];//현재 레벨의 요구 수치이다.
+									if(cur.goal<=res.data[i].value){
+										// 도전 과제가 완료되었다!
+										isReward = true;
+										if(cur.reward){
+											reward.exp += cur.reward.exp || 0;
+											reward.mny += cur.reward.mny || 0;
+											if(cur.reward.etc){
+												for(i in cur.reward.etc){
+													reward.etc[i] = reward.etc[i] ? reward.etc[i] + 1 : 1;
+												}
+											}
+										}
+										res.data[i].level += 1;
+										my.send('acv', { acv: acv[i][j]._id });
+										DB.uacv.update(["_id",my.id]).set(res.data).on();
+									}
+								}
+							}
+						}catch(e){
+							if(typeof i !== "undefined") JLog.toConsole(`Error on ${i}`);
+							JLog.toConsole(`Error Occurred on Acv2 / Ignored current Check.`);
+							console.log(e.toString());
+							return;
+						}
+						if(isReward){
+							if(reward.exp){
+								if(my.level < 3000){
+									my.score += reward.exp;
+									my.send('notice', { value: `도전 과제 완료 보상으로 ${commify(reward.exp)} 경험치를 획득하셨습니다.` });
+								}else my.send('notice', { value: `이미 최대 레벨이므로 경험치를 획득할 수 없습니다.` });
+							}if(reward.mny){
+								my.money += reward.mny;
+								my.send('notice', { value: `도전 과제 완료 보상으로 ${commify(reward.mny)}핑이 지급되었습니다.` });
+							}if(reward.etc && JSON.stringify(reward.etc) != "{}"){
+								for(i in reward.etc){
+									// 획득 처리
+									cur = reward.etc[i];
+									my.obtain(i,cur);
+									my.send('notice', { value: `도전 과제 완료 보상으로 ${i == 'boxB2' ? "희귀 휘장 상자" : "??"}가 ${cur}개 지급되었습니다.` });
+								}
+							}
+							my.flush(true);
+							my.send('updateme', { kkutu: my.data, money: my.money });
+							//DB.users.update([ '_id', my.id ]).set([ 'kkutu', my.data ], [ 'money', my.money ], [ 'box', my.box ]).on();
+						}
+					});
+				});
+			});
+		};
+		my.initAcv = function(fc){
 			var R = new Lizard.Tail();
+			var def = {value:0,level:0};
+			DB.uacv.findOne(['_id',my.id]).on(function(_res){
+				if(_res) R.go({s:true,init:false,data:_res});
+				else if(fc){
+					DB.uacv.insert(
+						[ '_id', my.id ],
+						[ 'acs', def ],
+						[ 'acv', {value:1,level:0} ],
+						[ 'enc', def ],
+						[ 'etr', def ],
+						[ 'lvl', def ],
+						[ 'scr', def ],
+						[ 'wpa', def ],
+						[ 'bx2', def ]
+					).on(function(res){
+						DB.uacv.findOne(['_id',my.id]).on(function(__res){
+							R.go({s:true,init:true,data:__res});
+						});
+					});
+				}else R.go({s:false,init:false,data:null});
+			});
+			return R;
+		};
+		my.getInfo = function(id, nick){
+			var rank;
+			var temp = {};
+			var i, w;
+			var Avail = [ "kkutu", "exordial", "nickname", "_id" ];
+			if(id && nick) return my.send('bot.error', { message: 'Only id or nickname should be given.' });
+			if(!id && !nick) return my.send('bot.error', { message: 'Id or nickname should be given.' });
+			if(!my.bot || my.guest) return;
+			else{
+				DB.users.findOne(id ? [ '_id', id ] : [ 'nickname', nick ]).on(function($bot){
+					if(!$bot) return my.send('bot.user', { data: null });
+					else{
+						for(i in Avail){
+							w = Avail[i];
+							if(w == "kkutu"){
+								temp["data"] = new exports.Data($bot.kkutu);
+							}else temp[w] = $bot[w];
+						}
+						DB.redis.getGlobal($bot._id).then(function(r){
+							if(!isNaN(Number(r))) rank = r;
+							else rank = undefined;
+							temp["rank"] = rank;
+							my.send('bot.user', { data: temp });
+						});
+					}
+				});
+			}
+		};
+		my.processBlack = function(black2, level){
+			my.blacklv = level;
+			if(!black2 || black2 == "null") return false;
+			if(black2 == "chat" && !level){
+				my.noChat = true;
+				return false;
+			}
+			/*
+				0, 기존 게임 이용 제한
+				1, 채팅 금지 (로비만)
+				2, 채팅 금지 (전체)
+				3, 제재 Lv1 (경험치/핑 20%만 지급, 커뮤니티 제한)
+				4, 제재 Lv2 (경험치/핑 10%만 지급, 커뮤니티 제한)
+				5, 게임 이용 제한 (접속만 가능)
+			*/
+			if(level && level !== 0){
+				if(level === 1){
+					my.noLobby = true;
+				}else if(level === 2){
+					my.noChat = true;
+				}else if(level === 3){
+					my.penalty = 1;
+					my.disableCommunity();
+				}else if(level === 4){
+					my.penalty = 2;
+					my.disableCommunity();
+				}else if(level === 5){
+					my.disableCommunity();
+					my.onlyAccess = true;
+				}
+				return false;
+			}
+			if(!level || level === 0){ return true; }
+			return false;
+		};
+		my.disableCommunity = function(){
+			my.noChat = true;
+			my.noWhisper = true;
+			my.noHwak = true;
+			my.svAvail = true;
+		};
+		my.noticeBlack = function(r, du){
+			if(r && r != "null"){
+				var da, du, mss;
+				if(du && du > 0){
+					du = new Date(Number(du));
+					mss = du.getMonth() + 1;
+					da = du.getFullYear() + '년 ' + mss + '월 ' + du.getDate() + '일 ';
+					da += fullt(du) + ' 까지';
+				}else da = "무기한";
+				if(my.noLobby) my.send('notice', { value: `관리자에 의해 회원님의 로비 채팅 이용이 제한되었습니다.<br><br>제재 사유: ${r}<br>제재 기간: ${da}` });
+				if(my.noChat) my.send('notice', { value: `관리자에 의해 회원님의 채팅 이용이 제한되었습니다.<br><br>제재 사유: ${r}<br>제재 기간: ${da}` });
+			}
+		};
+		my.getTotalEnhance = function(){
+			var i, j, t = 0;
+			if(!my.enhance || !my.equip) return 0;
+			for(i in my.enhance){
+				for(j in my.equip){
+					if(my.equip[j] == i && j.toLowerCase() != "mskin") t += my.enhance[i];
+				}
+			}
+			return t || 0;
+		};
+		my.getEnhanceBonus = function(){
+			var bn = 0;
+			var v = my.getTotalEnhance();
+			if(v >= 200) bn += 1;
+			if(v >= 190) bn += 0.7;//총합 0.7
+			if(v >= 150) bn += 0.5;//1.2
+			if(v >= 100) bn += 0.3;//1.5
+			if(v >= 70) bn += 0.3;//1.8
+			if(v >= 30) bn += 0.2;//2.0
+			return bn;
+		}
+		my.refresh = function(start){
+			var R = new Lizard.Tail();
+			var GLOBAL = require('../sub/global.json');
 			var ip = my.socket.upgradeReq.headers['x-forwarded-for'];
-			if(!ip) {
-				my.sendError(998);
+			if(!ip){
+				my.socket.send(JSON.stringify({ type: 'alert', code: 998 }));
 				my.socket.close();
 				return;
-			};
+			}
 			DB.black_ip.findOne([ 'ip', ip ]).on(function($gy){
 				if(!!$gy){
 					if(($gy.blackt && Number($gy.blackt) > Date.now()) || !$gy.blackt || $gy.blackt < 0){
+						JLog.log(`Black IP [${ip}] by ${my.id}`);
 						my.socket.send(JSON.stringify({ type: 'alert', code: 999 }));
 						my.socket.close();
 						return;
@@ -817,14 +1355,13 @@ exports.Client = function(socket, profile, sid){
 				R.go({ result: 200 });
 			}else DB.users.findOne([ '_id', my.id ]).on(function($user){
 				var first = !$user;
+				var ble = false;
 				try{
 					if($user.hasOwnProperty('blackt') && $user.blackt != null && $user.blackt != undefined && $user.black){
-						if($user.blackt < 0) var ble = false;
-						else var ble = $user.blackt;
+						if($user.blackt < 0) ble = false;
+						else ble = $user.blackt;
 					}
-				}catch(e){
-					var ble = false;
-				}
+				}catch(e){}
 				var blackend = ble ? $user.blackt <= Date.now() : false;
 				if(!first && blackend && ($user.black != "null" && $user.black != "")){
 					DB.users.update([ '_id', my.id ]).set([ 'blackt', 0 ], [ 'black', 'null' ]).on();
@@ -832,6 +1369,7 @@ exports.Client = function(socket, profile, sid){
 					JLog.log(`UNBAN [${my.id}]`);
 				}
 				var black = first ? "" : $user.black;
+				var blacklv = $user && $user.blacklv ? $user.blacklv : 0;
 				var kss = new Date();
 				var ss = false;
 				var fakess = false;
@@ -847,12 +1385,16 @@ exports.Client = function(socket, profile, sid){
 					DB.users.update([ '_id', my.id ]).set([ 'lastaccess', Number(jss) ]).on();
 				}
 				if(black == "null") black = false;
-				if(black == "chat"){
+				/*if(black == "chat"){
 					black = false;
 					my.noChat = true;
-				}
+				}*/
+				if(my.processBlack(black, Number(blacklv))) black = true;
+				else black = false;
+				
 				if(!my.last) my.last = 1;
-				if(!my.roomlast) my.roomlast = 1;
+				if(!rLast[my.id]) rLast[my.id] = 1;
+				if(!Last[my.id]) Last[my.id] = 1;
 				var pst;
 				var cdval = 30;
 				if(!$user.accessTime) $user.accessTime = { date: jss, time: 0 };
@@ -860,110 +1402,6 @@ exports.Client = function(socket, profile, sid){
 					my.accessTime = 0;
 					$user.accessTime = { date: jss, time: 0 };
 				}
-				/*if(!first && $user.kkutu.score != 0 && ss){
-					var gwb = 0;
-					var k;
-					var q = 1;
-					/*if(jss == "2020716"){
-						gwb = 400000;
-						k = "box_ping";
-						if(!$user.box) $user.box = {};
-						if($user.box[k]) $user.box[k] += q;
-						else $user.box[k] = q;
-						k = "boxB2";
-						if($user.box[k]) $user.box[k] += q;
-						else $user.box[k] = q;
-						DB.users.update([ '_id', my.id ]).set([ 'box', $user.box ]).on();
-						my.send('notice', { value: '광복절 이벤트 보상으로 40만 경험치, 희귀 휘장 상자 1개, 핑 상자 1개가 지급되었습니다.' });
-					}
-					pst = Math.round(Math.random() * 10000) / 100;
-					if(pst >= 50) var ltat = { code: 673, exp: 2000 };
-					else if(pst < 50 && pst > 15) var ltat = { code: 674, exp: 10000 };
-					else if(pst <= 15 && pst > 2) var ltat = { code: 675, exp: 20000 };
-					else if(pst <= 2 && pst > 0.6) var ltat = { code: 676, exp: 50000 };
-					else if(pst <= 0.6 && pst > 0.1) var ltat = { code: 677, exp: 100000 };
-					else if(pst <= 0.1) var ltat = { code: 678, exp: 300000 };
-					else var ltat = { code: 673, exp: 1000 };
-					
-					//if(!black && ss) my.send('chat', { notice: true, code: weekend ? ltat.code + 12 : ltat.code + 6 });
-					
-					pst = Math.round(Math.random() * 10000) / 100;
-					if(pst >= 50) var stat = { code: 667, ping: 1000 };
-					else if(pst < 50 && pst > 10) var stat = { code: 668, ping: 5000 };
-					else if(pst <= 15 && pst > 2) var stat = { code: 669, ping: 10000 };
-					else if(pst <= 2 && pst > 0.6) var stat = { code: 670, ping: 25000 };
-					else if(pst <= 0.6 && pst > 0.1) var stat = { code: 671, ping: 50000 };
-					else if(pst <= 0.1) var stat = { code: 672, ping: 100000 };
-					else var stat = { code: 667, ping: 1000 };
-					//if(!black && ss) my.send('chat', { notice: true, code: weekend ? stat.code + 6 : stat.code });
-					var wdu = false;
-					var mgu = false;
-					var GLOBAL = require('../sub/global.json');
-					try{
-						wdu = GLOBAL.WORDUSER.indexOf($user._id)!=-1;
-						mgu = GLOBAL.DESIGN.indexOf($user._id)!=-1;
-					}catch(e){
-						JLog.log('AccessGift Error: ' + e.toString());
-					}
-					var kswk = '접속 보상으로 <del>' + String(ltat.exp) + '</del> → <b>' + String(ltat.exp * 4) + ' 경험치</b>가 지급되었습니다.';
-					var pswk = '접속 보상으로 <del>' + String(stat.ping) + '</del> → <b>' + String(stat.ping * 4) + ' 핑</b>이 지급되었습니다.';
-					my.send('notice', { value: weekend ? kswk : '접속 보상으로 <del>' + String(ltat.exp) + '</del> → <b>' + String(ltat.exp * 2) + '</b> 경험치가 지급되었습니다.' });
-					my.send('notice', { value: weekend ? pswk : '접속 보상으로 <del>' + String(stat.ping) + '</del> → <b>' + String(stat.ping * 2) + '</b> 핑이 지급되었습니다.' });
-					if(ss){
-						try{
-							if(weekend){
-								cdval = cdval * 4;
-								ltat.exp = ltat.exp * 4;
-								stat.ping = stat.ping * 4;
-								my.send('chat', { notice: true, code: 695 });
-							}else{
-								ltat.exp = ltat.exp * 2;
-								stat.ping = stat.ping * 2;
-								my.send('chat', { notice: true, code: 754 });
-							}
-							var puser = { money: $user.money, score: $user.kkutu.score };
-							$user.kkutu.score += ltat.exp;
-							$user.kkutu.score += gwb;
-							DB.users.update([ '_id', my.id ]).set([ 'money', Number($user.money) + stat.ping + 10000 ]).on();
-							my.send('notice', { value: '<b>강화 비용 지원 중!!</b> 10,000핑이 지급되었습니다.' });
-							DB.users.update([ '_id', my.id ]).set([ 'kkutu', $user.kkutu ]).on();
-							if($user.money == puser.money) $user.money = Number($user.money) + stat.ping + 10000;
-							if($user.kkutu.score == puser.score) $user.kkutu.score = Number($user.kkutu.score) + ltat.exp + gwb;
-							var jjjs = $user;
-							JLog.log(`AccessGift: [${jjjs._id}] EXP+${ltat.exp}, PING+${stat.ping}`);
-							
-							if(wdu || mgu){
-								var juser = { money: $user.money, score: $user.kkutu.score };
-								var jlll = Math.floor(Math.random() * 2);
-								var resll = '';
-								if(jlll == 0){
-									DB.users.update([ '_id', my.id ]).set([ 'money', Number($user.money) + 500 ]).on();
-									if($user.money == juser.money) $user.money = Number($user.money) + 500;
-									resll = 'PING+500';
-									my.send('chat', { notice: true, code: 705 });
-								}else{
-									$user.kkutu.score += 1000;
-									DB.users.update([ '_id', my.id ]).set([ 'kkutu', $user.kkutu ]).on();
-									if($user.kkutu.score == juser.score) $user.kkutu.score = Number($user.kkutu.score) + 1000;
-									resll = 'EXP+1000';
-									my.send('chat', { notice: true, code: 706 });
-								}
-								JLog.log(`GwalliGift: [${jjjs._id}] ${resll}`);
-							}
-						}catch(e){
-							JLog.log('AccessGift Error: ' + e.toString());
-						}
-					}
-					
-					var dnk = $user.nickname || '<b><font color="green">이름 없는 사용자</font></b>';
-					knk = dnk + '님이 접속 보상으로 <font color="green">' + String(ltat.exp) + '경험치</font>를 획득하였습니다.';
-					if(ltat.exp >= 100000 && !weekend) exports.publish('notice', { value: knk });
-					if(ltat.exp >= 200000 && weekend) exports.publish('notice', { value: knk });
-					knk = dnk + '님이 접속 보상으로 <font color="green">' + String(stat.ping) + '핑</font>을 획득하였습니다.';
-					if(stat.ping >= 50000 && !weekend) exports.publish('notice', { value: knk });
-					if(stat.ping >= 100000 && weekend) exports.publish('notice', { value: knk });
-					
-				}*/
 				/* 망할 셧다운제
 				if(Cluster.isMaster && !my.isAjae){ // null일 수는 없다.
 					my.isAjae = Ajae.checkAjae(($user.birthday || "").split('-'));
@@ -988,11 +1426,55 @@ exports.Client = function(socket, profile, sid){
 				my.box = $user.box || {};
 				my.accessTime = $user.accessTime.time;
 				my.data = new exports.Data($user.kkutu);
+				//if(my.data.score && !Number($user.level) && !Number($user.score)) my.changeLevel();
 				my.money = Number($user.money);
+				my.evtMoney = Number($user.evtMoney || 0) || 0;
 				my.friends = $user.friends || {};
+				my.bot = $user.bot || 0;
+				my.level = $user.level || 1;
+				my.score = $user.score || 0;
+				var now = Date.now();
+				if(Cluster.isMaster && my.prev && my.inGame && (!my.place || (my.place && ROOM[my.place] && !ROOM[my.place].gaming)) && !my.bot && isJamsuAvailable){
+					//var now = Date.now();
+					var mgmt = GLOBAL.MGMTUSER.includes(my.id) || GLOBAL.DESIGN.includes(my.id) || GLOBAL.WORDUSER.includes(my.id);
+					var gm = GLOBAL.ADMIN.includes(my.id);
+					var kv = my.getEnhanceBonus();
+					var Acs = (now - my.prev)/1000; // 시간 (단위: 초)
+					var Reward = (Math.pow(getLvBonus(my.level, true), 1.075)*600)/60;
+					var _prev = my.level;
+					if(kss.getHours() < 8) Reward *= 0.7;
+					var Rw = Math.floor(Reward*Acs*4.7*2/(jamsuDown ? 2 : 1));
+					if(my.score) my.score = (Number(my.score || 0) || 0) + Rw;
+					if(mgmt) my.score += Math.floor(Rw * 0.4);
+					if(gm) my.score += Math.floor(Rw * 1);
+					var _now = my.level;
+					var _per = 100 * (Rw / (ReqExp.process(true)[_prev-1] || 1));
+					_per = _per.toFixed(4);
+					my.processLevelNotice(_prev, _now, my.nickname);
+					JLog.log(`[AccessEXP] #${my.id}: [Level: ${_prev}, Exp: ${Rw}, ${_per}%]`);
+					if(mgmt){
+						_per = 100 * (Math.floor(Rw * 0.4) / (ReqExp.process(true)[_prev-1] || 1));
+						JLog.log(`[AccessEXP] #${my.id}: [Level: ${_prev}, Exp: ${Math.floor(Rw*0.4)}, ${(_per).toFixed(4)}%] (Bonus)`);
+					}
+					if(kv){
+						my.score += Math.floor(Rw * kv);
+						_per = 100 * (Math.floor(Rw * kv) / (ReqExp.process(true)[_prev-1] || 1));
+						JLog.log(`[AccessEXP] #${my.id}: [Level: ${_prev}, Exp: ${Math.floor(Rw*kv)}, ${(_per).toFixed(4)}%] (Enhance / Total ${kv})`);
+					}
+					DB.users.update([ '_id', my.id ]).set([ 'kkutu', my.data ], [ 'score', my.score ], [ 'level', my.level ]).on(function($ud){
+						my.send('updateme', { score: my.score, level: my.level, goal: my.goal });
+						my.send('jamsuExp', { value: Rw });
+						if(mgmt) my.send('jamsuExp', { value: Math.floor(Rw * 0.4) });
+						if(gm) my.send('jamsuExp', { value: Rw });
+						if(kv) my.send('jamsuExp', { value: Math.floor(Rw * kv) });
+					});
+				}
+				my.inGame = true;
+				my.prev = now;
 				if(first) my.flush();
 				else{
 					my.checkExpire();
+					my.checkAcv(false);
 					my.okgCount = Math.floor((my.data.playTime || 0) / PER_OKG);
 				}
 				if(!my.guest){
@@ -1010,7 +1492,7 @@ exports.Client = function(socket, profile, sid){
 						DB.users.update([ '_id', my.id ]).set([ 'mission', $user.mission ]).on();
 					}
 					var GOT = false;
-					var rewardArrived = '우편함에 보상 도착! 우측 상단의 <i class="fa fa-envelope"></i> 버튼을 클릭하여 보상을 확인해 보세요!';
+					var rewardArrived = '우편함에 보상 도착! 우측 상단의 메뉴 (<i class="fa fa-bars"></i>) 에서 우편함 (<i class="fa fa-envelope"></i>) 을 클릭하여 보상을 확인해 보세요!';
 					if($user.mission && $user.mission.date == jss){
 						var M;
 						var PREV = {m:JSON.stringify($user.mission),p:JSON.stringify($user.post)};
@@ -1029,7 +1511,7 @@ exports.Client = function(socket, profile, sid){
 									}
 									GOT = true;
 									JLog.log(`[${my.id}] DailyMission Cleared`);
-									$user.post[new Date().getTime()+Math.floor(Math.random()*10000000000)] = { name: '일일 미션 보상', item: {exp:{amount:Math.ceil((Math.random()+1)*55*(levelBonus(ReqExp.getLevel(my.data.score))/1.3125))},mny:{amount:Math.floor(Math.random()*25000)+1}}};
+									$user.post[new Date().getTime()+Math.floor(Math.random()*10000000000)] = { name: '일일 미션 보상', item: {exp:{amount:Math.ceil((Math.random()+1)*70*(levelBonus(my.level)/1.275))},mny:{amount:Math.floor(Math.random()*100000)+100000}}};
 								}
 								if(M.name == 'Access'){
 									for(C in $user.mission.mission){
@@ -1038,7 +1520,7 @@ exports.Client = function(socket, profile, sid){
 										}
 									}
 									GOT = true;
-									$user.post[new Date().getTime()+Math.floor(Math.random()*10000000000)] = { name: '일일 미션 보상', item: M.reward == 0?{exp:{amount:Math.ceil((1+(M.level/6))*(Math.random()+1)*30*(levelBonus(ReqExp.getLevel(my.data.score))/1.3125)) }}:{mny:{amount:Math.floor(Math.random()*5000*(1+(M.level/6)))+1 }}};
+									$user.post[new Date().getTime()+Math.floor(Math.random()*10000000000)] = { name: '일일 미션 보상', item: M.reward == 0?{exp:{amount:Math.ceil((1+(M.level/6))*(Math.random()+1)*40*(levelBonus(my.level)/1.275)) }}:{mny:{amount:Math.floor(Math.random()*20000*(1+(M.level/6)))+30000 }}};
 								}
 								if(M.name == 'CharFactory'){
 									for(C in $user.mission.mission){
@@ -1047,7 +1529,7 @@ exports.Client = function(socket, profile, sid){
 										}
 									}
 									GOT = true;
-									$user.post[new Date().getTime()+Math.floor(Math.random()*10000000000)] = { name: '일일 미션 보상', item: M.reward == 0?{exp:{amount:Math.ceil((Math.random()+1)*10*(levelBonus(ReqExp.getLevel(my.data.score))/1.3125)) }}:{mny:{amount:Math.floor(Math.random()*3000*(1+(M.level/6)))+1 }}};
+									$user.post[new Date().getTime()+Math.floor(Math.random()*10000000000)] = { name: '일일 미션 보상', item: M.reward == 0?{exp:{amount:Math.ceil((Math.random()+1)*10*(levelBonus(my.level)/1.275)) }}:{mny:{amount:Math.floor(Math.random()*20000*(1+(M.level/6)))+10000 }}};
 								}
 								if(M.name == 'ChangeDress'){
 									GOT = true;
@@ -1056,7 +1538,7 @@ exports.Client = function(socket, profile, sid){
 											$user.mission.mission[C].now = Number(C.now)+1;
 										}
 									}
-									$user.post[new Date().getTime()+Math.floor(Math.random()*10000000000)] = { name: '일일 미션 보상', item: M.reward == 0?{exp:{amount:Math.ceil((Math.random()+1)*10*(levelBonus(ReqExp.getLevel(my.data.score))/1.3125)) }}:{mny:{amount:Math.floor(Math.random()*3000)+1 }}};
+									$user.post[new Date().getTime()+Math.floor(Math.random()*10000000000)] = { name: '일일 미션 보상', item: M.reward == 0?{exp:{amount:Math.ceil((Math.random()+1)*10*(levelBonus(my.level)/1.275)) }}:{mny:{amount:Math.floor(Math.random()*10000)+10000 }}};
 								}
 								if(M.name == 'SearchDict'){
 									for(C in $user.mission.mission){
@@ -1065,7 +1547,7 @@ exports.Client = function(socket, profile, sid){
 										}
 									}
 									GOT = true;
-									$user.post[new Date().getTime()+Math.floor(Math.random()*10000000000)] = { name: '일일 미션 보상', item: M.reward == 0?{exp:{amount:Math.ceil((Math.random()+1)*5*(levelBonus(ReqExp.getLevel(my.data.score))/1.3125)) }}:{mny:{amount:Math.floor(Math.random()*2000*(1+(M.level/6)))+1 }}};
+									$user.post[new Date().getTime()+Math.floor(Math.random()*10000000000)] = { name: '일일 미션 보상', item: M.reward == 0?{exp:{amount:Math.ceil((Math.random()+1)*5*(levelBonus(my.level)/1.275)) }}:{mny:{amount:Math.floor(Math.random()*5000*(1+(M.level/6)))+5000 }}};
 								}
 								if(M.name == 'DictPage'){
 									for(C in $user.mission.mission){
@@ -1074,7 +1556,7 @@ exports.Client = function(socket, profile, sid){
 										}
 									}
 									GOT = true;
-									$user.post[new Date().getTime()+Math.floor(Math.random()*10000000000)] = { name: '일일 미션 보상', item: M.reward == 0?{exp:{amount:Math.ceil((Math.random()+1)*10*(levelBonus(ReqExp.getLevel(my.data.score))/1.3125)) }}:{mny:{amount:Math.floor(Math.random()*2000*(1+(M.level/6)))+1 }}};
+									$user.post[new Date().getTime()+Math.floor(Math.random()*10000000000)] = { name: '일일 미션 보상', item: M.reward == 0?{exp:{amount:Math.ceil((Math.random()+1)*10*(levelBonus(my.level)/1.275)) }}:{mny:{amount:Math.floor(Math.random()*2500*(1+(M.level/6)))+2500 }}};
 								}
 								if(M.name == 'PlayAllMode'){
 									for(C in $user.mission.mission){
@@ -1083,7 +1565,7 @@ exports.Client = function(socket, profile, sid){
 										}
 									}
 									GOT = true;
-									$user.post[new Date().getTime()+Math.floor(Math.random()*10000000000)] = { name: '일일 미션 보상', item: M.reward == 0?{exp:{amount: Math.ceil((Math.random()+1+M.level)*10*(levelBonus(ReqExp.getLevel(my.data.score))/1.3125)) }}:{mny:{amount:Math.floor(Math.random()*2000*(1+(M.level/6)))+1 }}};
+									$user.post[new Date().getTime()+Math.floor(Math.random()*10000000000)] = { name: '일일 미션 보상', item: M.reward == 0?{exp:{amount: Math.ceil((Math.random()+1+M.level)*10*(levelBonus(my.level)/1.275)) }}:{mny:{amount:Math.floor(Math.random()*2000*(1+(M.level/6)))+2000 }}};
 								}
 							}
 						}
@@ -1094,22 +1576,24 @@ exports.Client = function(socket, profile, sid){
 					if(ss){
 						$user.post[new Date().getTime()+Math.floor(Math.random()*10000000000)] = {
 							name: '강화 비용 지원', 
-							item: {mny:{amount:5000+Math.floor(Math.random()*15001)}}
+							item: {mny:{amount:100000+Math.floor(Math.random()*100001)}}
 						};
-						if(jss == '202099'){
+						if(jss == '2021022'){
 							$user.post[new Date().getTime()+Math.floor(Math.random()*10000000000)] = {
-								name: '한글날 기념 보상', 
-								item: {mny:{amount:100900}}
+								name: '1주년 통합 미션 보상', 
+								item: {exp:{amount:Math.floor(2100*levelBonus(ReqExp.getLevel(my.data.score), true)*0.520210122)},mny:{amount:3000000}}
 							};
+							my.send('notice', { value: '분홍끄투 1주년 통합 미션 성공 보상이 지급되었습니다.' });
 						}
 						GOT = true;
-						DB.users.update([ '_id', my.id ]).set([ 'post', $user.post ]).on();
+						DB.users.update([ '_id', my.id ]).set([ 'post', $user.post ], [ 'chulseok', (Number($user.chulseok) || 0) + 1 ]).on();
 					}
 				}
+				//my.changeLevel();
 				var nW = new Date();
 				if(!my.guest){
-					if($user && $user.box && $user.hasOwnProperty('lvup') && $user.lvup != 1 && nW.getTime() < 1605538799000){
-						$user.box['box_lvSupport'] = {value:1,expire:1605538799};
+					if($user && $user.box && $user.hasOwnProperty('lvup') && $user.lvup != 1 && nW.getTime() < 1611413999000){
+						$user.box['box_lvSupport'] = {value:1,expire:1611413999};
 						DB.users.update([ '_id', my.id ]).set(
 							[ 'box', $user.box ],
 							[ 'lvup', 1 ]
@@ -1117,29 +1601,32 @@ exports.Client = function(socket, profile, sid){
 						my.send('notice', { value: '레벨업 지원 상자가 지급되었습니다. 아이템 보관함에서 사용 가능합니다.' });
 					}
 				}
-							
+				if(start && $user.black) my.noticeBlack($user.black, $user.blackt);
+				my.checkLevel();
 				if(GOT) my.send('notice', { value: rewardArrived });
 				if(!my.guest) my.send('post', { data: $user.post, accessTime: $user.accessTime });
-				
+				//console.log(black);
 				if(black) R.go({ result: 444, black: black });
 				//else if(Cluster.isMaster && $user.server) R.go({ result: 409, black: $user.server });
 				else if(exports.NIGHT && my.isAjae === false) R.go({ result: 440 });
 				else R.go({ result: 200 });
 			});
+			my.ping();
 			return R;
 		};
 		my.viewstat = function(){
 			if(my.guest) return;
 			DB.users.findOne([ '_id', my.id ]).on(function($stat){
 				if(!$stat) return;
-				var Remain = renderStatusPoint($stat.kkutu.score);
+				var Remain = renderStatusPoint(my.level);
 				var Current = 0;
 				if($stat.stat){
 					if($stat.stat.exp) Current += Number($stat.stat.exp);
 					if($stat.stat.mny) Current += Number($stat.stat.mny);
 					if(Current > Remain){
 						DB.users.update(['_id',my.id]).set(['stat',{exp:0,mny:0}]).on();
-						return my.send('notice', { value: '비 정상적인 시스템 이용이 감지되어 포인트가 초기화되었습니다.' });
+						my.send('notice', { value: '보유하고 계신 포인트가 정상 지급 포인트 양보다 많아 포인트가 초기화되었습니다.<br>포인트를 다시 분배해 주세요.' });
+						return;
 					}						
 				}
 				if(!$stat.stat){
@@ -1155,15 +1642,18 @@ exports.Client = function(socket, profile, sid){
 			if(!target || !value) return;
 			DB.users.findOne([ '_id', my.id ]).on(function($stat){
 				if(!$stat) return;
-				var Remain = renderStatusPoint($stat.kkutu.score);
+				var Remain = renderStatusPoint(my.level);
 				var Current = 0;
 				if($stat.stat){
 					if($stat.stat.exp) Current += Number($stat.stat.exp);
-					if($stat.stat.mny) Current += Number($stat.stat.mny);
+					if($stat.stat.mny){
+						if($stat.stat.mny < 9000) Current += Number($stat.stat.mny);
+						else return my.send('notice', { value: '해당 효과에 사용 가능한 최대 포인트를 초과했습니다.' });
+					}
 					if(Current > Remain){
 						var def = {exp:0,mny:0};
 						DB.users.update(['_id',my.id]).set([ 'stat', def ]).on();
-						return my.send('notice', { value: '비 정상적인 시스템 이용이 감지되어 포인트가 초기화되었습니다.' });
+						return my.send('notice', { value: '보유하고 계신 포인트가 정상 지급 포인트 양보다 많아 포인트가 초기화되었습니다.<br>포인트를 다시 분배해 주세요.' });
 					}
 				}
 				if(!$stat.stat) $stat.stat = {exp:0,mny:0};
@@ -1179,11 +1669,11 @@ exports.Client = function(socket, profile, sid){
 			DB.users.update([ '_id', my.id ]).set([ 'stat', {exp:0,mny:0} ]).on();
 			my.viewstat();
 		};
-		function renderStatusPoint(exp){
-			var lv = ReqExp.getLevel(Number(exp));
+		function renderStatusPoint(lv){
+			//var lv = ReqExp.getLevel(Number(exp));
 			if(lv<=1000) return 4 * lv;
 			else{
-				return 4000 + (10 * (lv - 1000));
+				return 4000 + (10 * (lv - 1000)) + (lv > 1500 ? 10 * (lv - 1500) : 0);
 			}
 		}
 		my.getMission = function(){
@@ -1192,14 +1682,20 @@ exports.Client = function(socket, profile, sid){
 			});
 		};
 		my.receiveItem = function(id){
+			var prev;
 			DB.users.findOne([ '_id', my.id ]).on(function($post){
 				if(!$post) return;
 				if($post.post[id]){
 					var target = $post.post[id].item;
 					if(target.exp){
-						$post.kkutu.score = Number($post.kkutu.score) + (target.exp.amount || 0);
-						my.data.score = $post.kkutu.score;
-						my.send('notice', { value: '경험치를 획득했습니다: ' + commify(target.exp.amount) });
+						prev = Number($post.level);
+						$post.score = Number($post.score) + (target.exp.amount || 0);
+						if(prev < ReqExp.MAX_LEVEL){
+							my.score = $post.score;
+							my.send('notice', { value: '경험치를 획득했습니다: ' + commify(target.exp.amount) });
+							my.checkLevel();
+						}else my.send('notice', { value: '이미 최대 레벨이므로 경험치를 획득할 수 없습니다.' });
+						my.processLevelNotice(prev, my.level, my.nickname);
 					}
 					if(target.mny){
 						$post.money = Number($post.money) + (target.mny.amount || 0);
@@ -1213,7 +1709,7 @@ exports.Client = function(socket, profile, sid){
 					[ 'money', $post.money ],
 					[ 'post', $post.post ]
 				).on();
-				my.send('updateme', { kkutu: $post.kkutu, money: $post.money, post: $post.post });
+				my.send('updateme', { kkutu: $post.kkutu, money: $post.money, post: $post.post, level: my.level, score: my.score });
 			});
 		}
 		my.flush = function(box, equip, friends){
@@ -1225,27 +1721,37 @@ exports.Client = function(socket, profile, sid){
 			}
 			DB.users.upsert([ '_id', my.id ]).set(
 				!isNaN(my.money) ? [ 'money', my.money ] : undefined,
-				(my.data && !isNaN(my.data.score)) ? [ 'kkutu', my.data ] : undefined,
+				(my.data && !isNaN(my.score)) ? [ 'kkutu', my.data ] : undefined,
 				box ? [ 'box', my.box ] : undefined,
 				equip ? [ 'equip', my.equip ] : undefined,
 				friends ? [ 'friends', my.friends ] : undefined
 			).on(function(__res){
 				DB.redis.getGlobal(my.id).then(function(_res){
 					//분홍꽃 수정..
-					if(ReqExp.getLevel(my.data.score) >= 2000){
-						DB.redis.remove(my.id).then(function(res){
-							JLog.log(`FLUSHED [${my.id}] DELETE / PTS=${my.data.score} MNY=${my.money} NICK=${my.nickname}`);
+					if(my.level >= 3000){
+						/*DB.redis.remove(my.id).then(function(res){
+							JLog.log(`FLUSHED [${my.id}] DELETE / PTS=${my.score} MNY=${my.money} NICK=${my.nickname}`);
 							//R.go({ id: my.id, prev: _res })
-						});
-						DB.myeong.putGlobal(my.id, my.data.score).then(function(res){
-							JLog.log(`FLUSHED [${my.id}] MYEONG / PTS=${my.data.score} MNY=${my.money} NICK=${my.nickname}`);
+						});*/
+						/*DB.ping.putGlobal(my.id, my.money).then(function(res){
+							JLog.log(`FLUSHED [${my.id}] PING / PTS=${my.score} MNY=${my.money} NICK=${my.nickname}`);
+						});*/
+						/*DB.myeong.putGlobal(my.id, my.data.score).then(function(res){
+							JLog.log(`FLUSHED [${my.id}] MYEONG / PTS=${my.score} MNY=${my.money} NICK=${my.nickname}`);
 							R.go({ id: my.id, prev: _res });
-						});
+						});*/
 					} else {
-						DB.redis.putGlobal(my.id, my.data.score).then(function(res){
-							JLog.log(`FLUSHED [${my.id}] PTS=${my.data.score} MNY=${my.money} NICK=${my.nickname}`);
+						/*DB.ping.putGlobal(my.id, my.money).then(function(res){
+							JLog.log(`FLUSHED [${my.id}] PING / PTS=${my.score} MNY=${my.money} NICK=${my.nickname}`);
+						});*/
+						DB.redis2.hPut(my.id, JSON.stringify({ score: my.score, level: my.level, nick: my.nickname })).then(function(res){
+							JLog.log(`FLUSHED [${my.id}] LEVEL=${my.level} EXP=${my.score} MNY=${my.money} NICK=${my.nickname}`);
 							R.go({ id: my.id, prev: _res });
 						});
+						/*DB.redis.putGlobal(my.id, my.data.score).then(function(res){
+							JLog.log(`FLUSHED [${my.id}] PTS=${my.score} MNY=${my.money} NICK=${my.nickname}`);
+							R.go({ id: my.id, prev: _res });
+						});*/
 					}
 				});
 				/*var tkid = my.id + "*" + encodeURI(my.nickname);
@@ -1286,14 +1792,28 @@ exports.Client = function(socket, profile, sid){
 			}*/
 		};
 		my.enter = function(room, spec, pass){
-			var $room, i;
-			
+			var GLOBAL = require('../sub/global.json');
+			var $room, i, temp, k, v, s, d;
+			if(_roomblocked && !GLOBAL.ADMIN.includes(my.id)){
+				return my.send('palert', { value: '운영자에 의해 방 생성 및 입장이 제한되었습니다.' });
+			}
+			if(temp = Penalty[my.id]){
+				k = temp.last;
+				v = (new Date()).getTime();
+				s = temp.count * 1000 * 180;
+				v = v - k;
+				if(s - v >= 0){
+					my.send('palert', { value: `중도 퇴장으로 인해 방 개설 및 입장이 불가능합니다.<br>남은 시간: ${prettyTime(s - v)}<script>$("#ctr-close").trigger('click');</script>` });
+					return;
+				}
+			}
 			if(my.place){
 				my.send('roomStuck');
 				JLog.warn(`Enter the room ${room.id} in the place ${my.place} by ${my.id}!`);
 				return;
 			}else if(room.id){
 				// 이미 있는 방에 들어가기... 여기서 유효성을 검사한다.
+				
 				$room = ROOM[room.id];
 				
 				if(!$room){
@@ -1304,6 +1824,7 @@ exports.Client = function(socket, profile, sid){
 					}
 					return my.sendError(430, room.id);
 				}
+				if(my.bot && Const.GAME_TYPE[$room.mode] != "TAK") return my.sendError(448);
 				if(!spec){
 					if($room.gaming){
 						return my.send('error', { code: 416, target: $room.id });
@@ -1311,8 +1832,7 @@ exports.Client = function(socket, profile, sid){
 						return my.sendError(401);
 					}
 				}
-				if($room.players.length >= $room.limit + (spec ? Const.MAX_OBSERVER : 0)){
-					var GLOBAL = require('../sub/global.json');
+				if($room.players.length >= $room.limit + (spec ? Const.MAX_OBSERVER : 0) && !($room.gaming && checkGM($room.players))){
 					adminch = GLOBAL.ADMIN.indexOf(my.id) != -1;
 					if(!adminch){
 						return my.sendError(429);
@@ -1352,6 +1872,7 @@ exports.Client = function(socket, profile, sid){
 			}else if(my.guest && !GUEST_PERMISSION.enter){
 				my.sendError(401);
 			}else{
+				if(my.bot && Const.GAME_TYPE[room.mode] != "TAK") return my.sendError(449);
 				// 새 방 만들어 들어가기
 				/*
 					1. 마스터가 ID와 채널을 클라이언트로 보낸다.
@@ -1360,6 +1881,10 @@ exports.Client = function(socket, profile, sid){
 					4. 일꾼이 만들었다고 마스터에게 알린다.
 					5. 마스터가 방 정보를 반영한다.
 				*/
+				if(d = RoomLimit[my.id]){
+					if(d >= 10) return my.send("palert", { value: '짧은 시간 내에 방을 너무 많이 생성하여<br>방 생성이 임시적으로 제한되었습니다.' });
+					else RoomLimit[my.id] = d + 1;
+				}else RoomLimit[my.id] = 1;
 				var GLOBAL = require('../sub/global.json');
 				adminch = GLOBAL.ADMIN.indexOf(my.id) != -1;
 				if(ridch){
@@ -1409,6 +1934,14 @@ exports.Client = function(socket, profile, sid){
 				else $room.come(my, room.password, pass);
 			}
 		};
+		my.spdCheck = function(type){
+			var w;
+			if(w = QLast[my.id]){
+				if(Date.now() - w <= 300) return true;
+			}
+			QLast[my.id] = Date.now();
+			return false;
+		};
 		my.leave = function(kickVote, force){
 			var $room = ROOM[my.place];
 			
@@ -1421,31 +1954,38 @@ exports.Client = function(socket, profile, sid){
 			if($room) $room.go(my, kickVote, force);
 		};
 		my.setForm = function(mode){
+			if(my.spdCheck('ft')) return my.send('notice', { value: '속도가 너무 빠릅니다. 잠시 후 다시 시도해주세요.' });
 			var $room = ROOM[my.place];
 			
 			if(!$room) return;
-			
+			LastAct[my.place] = Date.now();
 			my.form = mode;
 			my.ready = false;
-			my.publish('user', my.getData());
+			my.refresh().then(function(res){
+				my.publish('user', my.getData());
+			});
 		};
 		my.setTeam = function(team){
+			if(my.spdCheck('ft')) return my.send('notice', { value: '속도가 너무 빠릅니다. 잠시 후 다시 시도해주세요.' });
+			LastAct[my.place] = Date.now();
 			my.team = team;
-			my.publish('user', my.getData());
+			my.refresh().then(function(res){
+				my.publish('user', my.getData());
+			});
 		};
-		my.kick = function(target, kickVote){
+		my.kick = function(target, kickVote, byAdmin){
 			var $room = ROOM[my.place];
 			var i, $c;
 			var len = $room.players.length;
-			
+			LastAct[my.place] = Date.now();
 			if(target == null){ // 로봇 (이 경우 kickVote는 로봇의 식별자)
 				$room.removeAI(kickVote);
 				return;
 			}
-			for(i in $room.players){
+			/*for(i in $room.players){
 				if($room.players[i].robot) len--;
-			}
-			kickVote = { target: target, Y: 1, N: 0 };
+			}*/
+			kickVote = { target: target, Y: 1, N: 0, byAdmin: byAdmin };
 			if(kickVote){
 				$room.kicked.push(target);
 				$room.kickVote = null;
@@ -1493,33 +2033,38 @@ exports.Client = function(socket, profile, sid){
 			my.publish('user', my.getData());
 		};
 		my.start = function(){
-			var $room = ROOM[my.place];
+			var $room = ROOM[my.place], m;
 			
 			if(!$room) return;
-			if($room.master != my.id) return;
+			if($room.master != my.id && !my.admin) return;
 			if($room.players.length < 1) return my.sendError(411);
-			if(Const.GAME_TYPE[$room.mode] == 'TAK') return my.send('palert', { value: '대화방에서는 게임을 시작할 수 없습니다.' });
-			
+			if((m = Const.GAME_TYPE[$room.mode]) == 'TAK') return my.send('palert', { value: '대화방에서는 게임을 시작할 수 없습니다.' });
+			if(_roomblocked) return my.send('palert', { value: '운영자에 의해 게임 시작이 제한되었습니다.' });
 			$room.ready();
 		};
 		my.renew = function(){
 			my.send('renew', { room: exports.getRoomList(), user: exports.getUserList() });
 		};
 		my.evtStat = function(){
-			DB.evt.findOne([ '_id', 'gwb' ]).on(function($evt){
+			DB.evt.findOne([ '_id', '1staniv' ]).on(function($evt){
 				try{
-					my.send('evtStat', { evtKey: String($evt.evtKey) });
+					my.send('evtStat2', { evtKey: $evt.evtKey });
 				}catch(e){
-					my.send('evtStat', { evtKey: String(0) });
+					my.send('evtStat2', { evtKey: $evt.evtKey });
 				}
 			});
 		}
 		my.ping = function(){
-			my.renew();
-			my.send('ping', { a: '' });
+			var lH = Math.floor(my.accessTime/1000/3600);
 			my.accessTime += new Date().getTime() - my.accessLast;
+			var nH = Math.floor(my.accessTime/1000/3600);
 			my.accessLast = new Date().getTime();
-		}
+			if(lH < nH){
+				if(Cluster.isMaster) my.send('notice', {
+					value: '게임 접속 시간이 '+nH+'시간을 경과했습니다.'+(nH>3?' 과도한 게임 이용은 정상적인 일상생활에 지장을 줄 수 있습니다.':'')				
+				});
+			}
+		};
 		my.dict = function(word, lang, mode){
 			var MainDB = DB.kkutu[lang];
 			DB.users.findOne([ '_id', my.id ]).on(function($user){
@@ -1578,7 +2123,7 @@ exports.Client = function(socket, profile, sid){
 			if(my.guest) return;
 			var uid = my.id;
 			var isDyn = gid.charAt() == '$';
-			var prev = ReqExp.getLevel(my.data.score);
+			var prev = ReqExp.getLevel(my.score);
 			
 			DB.users.findOne([ '_id', uid ]).on(function($user){
 				if(!$user) return my.send('cns', { error: 400 });
@@ -1587,13 +2132,14 @@ exports.Client = function(socket, profile, sid){
 				var q = $user.box[gid];
 				var output;
 				if(gid == 'dictPage'){
-					var naw = new Date();
+					return my.send('notice', { value: '사용이 일시적으로 제한된 아이템입니다.' });
+					/*var naw = new Date();
 					var ndate = String(naw.getYear())+String(naw.getMonth())+String(naw.getDate());
 					if(!$user.dict) $user.dict = {date:ndate, count:0};
 					if($user.dict.date == ndate && $user.dict.count && $user.dict.count >= 1000) return my.send('palert', { value: '하루에 최대 1000개만 사용 가능합니다.' });
 					if($user.dict.date != ndate) $user.dict = { date: ndate, count: 0 };
 					$user.dict.count = Number($user.dict.count || 0) + 1;
-					my.send('notice', { value: '오늘 사용한 백과사전 낱장 개수: ' + $user.dict.count + ' / 1000' });
+					my.send('notice', { value: '오늘 사용한 백과사전 낱장 개수: ' + $user.dict.count + ' / 1000' });*/
 				}
 				
 				if(!q) return my.send('cns', { error: 430 });
@@ -1602,8 +2148,9 @@ exports.Client = function(socket, profile, sid){
 					if(!$item) return my.send('cns', { error: 430 });
 					consume($user, gid, 1);
 					output = useItem($user, $item, gid);
-					my.data.score = $user.kkutu.score;
-					my.processLevelNotice(prev, ReqExp.getLevel($user.kkutu.score), my.nickname);
+					/*if(prev < 2000) my.data.score = $user.kkutu.score;
+					else my.send('notice', { value: '이미 최대 레벨이므로 경험치를 획득할 수 없습니다.' });*/
+					//my.processLevelNotice(prev, ReqExp.getLevel($user.kkutu.score), my.nickname);
 					DB.users.update([ '_id', uid ]).set($user).on(function($res){
 						output.result = 200;
 						output.box = $user.box;
@@ -1616,7 +2163,10 @@ exports.Client = function(socket, profile, sid){
 		};
 		my.processLevelNotice = function(prev,now,nick){
 			var VAL = false;
-			if(prev <= 1099 && now >= 1100){
+			if(!my.friends) my.friends = {};
+			var fr = Object.keys(my.friends);
+			//console.log(fr);
+			/*if(prev <= 1099 && now >= 1100){
 				VAL = (nick || '(알 수 없음) ') + '님이 <font color="green">1100레벨</font>을 달성했습니다!';
 			}
 			if(prev <= 1199 && now >= 1200){
@@ -1632,30 +2182,83 @@ exports.Client = function(socket, profile, sid){
 				VAL = (nick || '(알 수 없음) ') + '님이 <font color="navy">1500레벨</font>을 달성했습니다! 모두 축하해주세요!';
 			}
 			if(prev <= 1599 && now >= 1600){
-				VAL = (nick || '(알 수 없음) ') + '님이 <font color="navy">1600레벨</font>을 달성했습니다!';
+				VAL = (nick || '(알 수 없음) ') + '님이 <font color="navy">★ 1600레벨 ★</font>을 달성했습니다!';
 			}
 			if(prev <= 1699 && now >= 1700){
-				VAL = (nick || '(알 수 없음) ') + '님이 <font color="navy">1700레벨</font>을 달성했습니다!';
+				VAL = (nick || '(알 수 없음) ') + '님이 <font color="blue">★♩ 1700레벨 ♪★</font>을 달성했습니다!';
 			}
 			if(prev <= 1749 && now >= 1750){
-				VAL = (nick || '(알 수 없음) ') + '님이 <font color="navy">1750레벨</font>을 달성했습니다!';
+				VAL = (nick || '(알 수 없음) ') + '님이 <font color="blue">1750레벨</font>을 달성했습니다! 모두 축하해주세요!';
 			}
 			if(prev <= 1799 && now >= 1800){
-				VAL = (nick || '(알 수 없음) ') + '님이 <font color="navy">1800레벨</font>을 달성했습니다!';
+				VAL = '[속보] ' + (nick || '(알 수 없음) ') + '님이 <font color="red">1800레벨</font>을 달성했습니다!';
+			}
+			if(prev <= 1849 && now >= 1850){
+				VAL = '[속보] ' + (nick || '(알 수 없음) ') + '님이 <font color="red">1850레벨</font>을 달성했습니다!! 모두 축하해주세요.';
+			}
+			if(prev <= 1899 && now >= 1900){
+				VAL = (nick || '(알 수 없음)') + '님이 <font color="red">1900레벨</font>을 달성했습니다!! <del>곧 만렙을...??</del>';
+			}
+			if(prev <= 1924 && now >= 1925){
+				VAL = (nick || '(알 수 없음)') + '님이 <font color="red">1925레벨</font>을 달성했습니다!! 만렙 달성까지 <del>고작</del> 75레벨 남았습니다.';
+			}
+			if(prev <= 1949 && now >= 1950){
+				VAL = (nick || '(알 수 없음)') + '님이 <font color="red">1950레벨</font>을 달성했습니다!! 이제 만렙 달성까지 <font color="blue"75레벨</font> 남았습니다.';
+			}
+			if(prev <= 1974 && now >= 1975){
+				VAL = (nick || '(알 수 없음)') + '님이 <font color="red">1975레벨</font>을 달성했습니다!!';
+			}*/
+			if(prev <= 1999 && now >= 2000){
+				VAL = (nick || '(알 수 없음)') + '님이 <font color="blue">2000레벨</font>을 달성했습니다!';
 			}
 			if(Cluster.isMaster){
-				if(VAL) exports.send('notice', { value: VAL });
+				if(now > prev) exports.narrate(fr, 'levelup', { user: my.id, value: now });
+				if(VAL) exports.publish('notice', { value: VAL });
 			}else if(Cluster.isWorker){
+				if(now > prev) process.send({ type: 'levelup', user: my.id, value: now, friends: my.friends });
 				if(VAL) process.send({ type: 'lvnotice', value: VAL });
 			}
 		}
+		my.checkLevel = function(){
+			let tmp = ReqExp.process(), v, levelup;
+			my.score = Number(my.score) + my.data.score;
+			my.data.score = 0;
+			//JLog.toConsole(`Level(C): ${my.level}`);
+			while((v = (tmp[my.level-1] || tmp[0])) <= my.score){
+				my.score -= v;
+				my.level++;
+			}
+			DB.users.update([ '_id', my.id ]).set(
+				[ 'score', my.score ],
+				[ 'level', my.level ],
+				[ 'kkutu', my.data ]
+			).on();
+		};
+		/*my.changeLevel = function(){
+			if(!my.level){
+				my.level = 1;
+				my.score = my.data.score;
+				my.data.score = 0;
+				let tmp = ReqExp.process(), v;
+				while((v = (tmp[my.level-1] || tmp[0])) <= my.score){
+					my.score -= v;
+					my.level += 1;
+				}
+				JLog.toConsole(`Level(L): ${my.level}`);
+				DB.users.update([ '_id', my.id ]).set(
+					[ 'score', my.score ],
+					[ 'level', my.level ],
+					[ 'kkutu', my.data ]
+				).on();
+			}
+		};*/
 		my.cnsAll = function(gid){
 			if(my.guest) return;
 			var uid = my.id;
 			// 1200, 1500, 1750, 1800, 1850, 1900, 1950, 1990~2000
 			var isDyn = gid.charAt() == '$';
 			if(gid != 'dictPage') return my.send('cns', { error: 400 });
-			if(my && my.data && my.data.score) var prev = ReqExp.getLevel(my.data.score);
+			if(my && my.level) var prev = my.level;
 			DB.users.findOne([ '_id', uid ]).on(function($user){
 				if(!$user) return my.send('cns', { error: 400 });
 				if(!$user.box) return my.send('cns', { error: 400 });
@@ -1664,22 +2267,24 @@ exports.Client = function(socket, profile, sid){
 				var output;
 				if(!q) return my.send('cns', { error: 430 });
 				if(gid == 'dictPage'){
-					var naw = new Date();
+					return my.send('notice', { value: '사용이 일시적으로 제한된 아이템입니다.' });
+					/*var naw = new Date();
 					var ndate = String(naw.getYear())+String(naw.getMonth())+String(naw.getDate());
 					if(!$user.dict) $user.dict = {date:ndate, count:0};
 					if($user.dict.date == ndate && $user.dict.count && $user.dict.count >= 1000) return my.send('palert', { value: '하루에 최대 1000개만 사용 가능합니다.' });
 					if($user.dict.date != ndate) $user.dict = { date: ndate, count: 0 };
 					q = (1000 - $user.dict.count)<q?1000-$user.dict.count:q;
 					$user.dict.count = Number($user.dict.count || 0) + q;
-					my.send('notice', { value: '오늘 사용한 백과사전 낱장 개수: ' + $user.dict.count + ' / 1000' });
+					my.send('notice', { value: '오늘 사용한 백과사전 낱장 개수: ' + $user.dict.count + ' / 1000' });*/
 				}
 				DB.kkutu_shop.findOne([ '_id', isDyn ? gid.slice(0, 4) : gid ]).limit([ 'cost', true ]).on(function($item){
 					if(!$item) return my.send('cns', { error: 430 });
 					
 					for(var i=0; i<q; i++) consume($user, gid, 1);
 					output = useExp($user, $item, gid, q);
-					my.data.score = $user.kkutu.score;
-					my.processLevelNotice(prev, ReqExp.getLevel($user.kkutu.score), my.nickname);
+					/*if(prev < ReqExp.MAX_LEVEL) my.score = $user.score;
+					else my.send('notice', { value: '이미 최대 레벨이므로 경험치를 획득할 수 없습니다.' });*/
+					my.processLevelNotice(prev, my.level, my.nickname);
 					DB.users.update([ '_id', uid ]).set($user).on(function($res){
 						output.result = 200;
 						output.box = $user.box;
@@ -1724,6 +2329,18 @@ exports.Client = function(socket, profile, sid){
 						if(Math.random() >= o.rate) continue;
 						if(o.key.charAt(4) == "?"){
 							o.key = o.key.slice(0, 4) + (blend ? blendWord(word) : word.charAt(Math.floor(Math.random() * word.length)));
+						}
+						if(o.key == "boxB2"){
+							DB.uacv.findOne(['_id',my.id]).on(function(_v){
+								if(_v){
+									delete _v._id;
+									if(_v['bx2']) _v['bx2'].value = _v['bx2'].value ? _v['bx2'].value + 1 : 1;
+									else _v['bx2'] = {value:1,level:0};
+									DB.uacv.update(['_id',my.id]).set(_v).on(function(v){
+										JLog.log(`[boxB2] ${my.id} Success!`);
+									});
+								}
+							});
 						}
 						obtain($user, o.key, o.value, o.term);
 						gain.push(o);
@@ -1871,7 +2488,7 @@ exports.Client = function(socket, profile, sid){
 					got(pick([ 'b4_bb', 'b4_hongsi', 'b4_mint' ]), 1, 604800);
 					break;
 				case 'dictPage':
-					R.exp = Math.round(Math.sqrt(1 + 2 * ($user.kkutu.score || 0))) * 2;
+					R.exp = Math.round(Math.sqrt(1 + 2 * ($user.kkutu.score || 0))) * 4;
 					$user.kkutu.score += R.exp;
 					break;
 				case 'exp_n':
@@ -1921,7 +2538,7 @@ exports.Client = function(socket, profile, sid){
 					R.cde = 100;
 					break;
 				case 'box_ping':
-					R.money = Math.floor(Math.random() * 100000) + 100001;
+					R.money = Math.floor(Math.random() * 2000001) + 1000000;
 					$user.money = Number($user.money) + Number(R.money);
 					break;
 				case 'box_lvSupport':
@@ -1934,6 +2551,7 @@ exports.Client = function(socket, profile, sid){
 					got(pick([ 'b4_bb', 'b4_hongsi', 'b4_mint' ]), 1, 86400*35);
 					got('exp100',1,3600*12);
 					delete $user.box['box_lvSupport'];
+					$user.money = Number($user.money) + Number(R.money);
 					$user.kkutu.score = Number($user.kkutu.score) + Number(R.exp);
 					break;
 				default:
@@ -1949,20 +2567,23 @@ exports.Client = function(socket, profile, sid){
 			return R;
 		};
 		function getSupportEXP(lv){
-			if(lv<1000) return {min:1000000,max:2500000};
-			if(lv<1100) return {min:175000000,max:250000000};
-			if(lv<1200) return {min:200000000,max:325000000};
-			if(lv<1300) return {min:500000000,max:750000000};
-			if(lv<1400) return {min:875000000,max:1250000000};
-			if(lv<1500) return {min:1750000000,max:2250000000};
-			if(lv<1600) return {min:4750000000,max:6000000000};
-			if(lv<1700) return {min:7500000000,max:11000000000};
-			if(lv<1800) return {min:17500000000,max:30000000000};
-			if(lv<1900) return {min:30000000000,max:40000000000};
-			if(lv<1950) return {min:75000000000,max:100000000000};
-			if(lv<1990) return {min:100000000000,max:125000000000};
-			if(lv<2000) return {min:125000000000,max:200000000000};
+			if(lv<1000) return {min:1500000,max:40000000};//1~1000
+			if(lv<1100) return {min:60000000,max:125000000};//1000~1100
+			if(lv<1200) return {min:125000000,max:200000000};//1100~1200
+			if(lv<1300) return {min:250000000,max:300000000};//1200~1300
+			if(lv<1400) return {min:500000000,max:600000000};//1300~1400
+			if(lv<1500) return {min:1200000000,max:1500000000};//1400~1500
+			if(lv<1600) return {min:3000000000,max:4000000000};//1500~1600
+			if(lv<1700) return {min:5000000000,max:7500000000};//1600~1700
+			if(lv<1800) return {min:5000000000,max:8000000000};//1700~1800
+			if(lv<1900) return {min:9000000000,max:12000000000};//1800~1900
+			if(lv<1950) return {min:10000000000,max:25000000000};//1900~1950
+			if(lv<1990) return {min:25000000000,max:40000000000};//1950~1990
+			if(lv<2000) return {min:50000000000,max:75000000000};//1990~2000
 			return {min:0,max:0};
+			/*var xp = ReqExp.process(true);
+			var wp = Math.floor(lv/100)*100;
+			return {min:xp[wp-1]*((2000-wp)/400),max:xp[wp+48]*((2000-wp)/200)};*/
 		}
 		my.reqBox = function(){
 			if(my.guest) return my.send('box', { error: 400 });
@@ -2054,8 +2675,9 @@ exports.Client = function(socket, profile, sid){
 			var $room = ROOM[my.place];
 			
 			if($room){
-				if(!$room.gaming){
-					if($room.master == my.id){
+				if(my.bot && Const.GAME_TYPE[room.mode] != "TAK") my.sendError(431);
+				else if(!$room.gaming || my.admin){
+					if($room.master == my.id || my.admin){
 						$room.set(room);
 						exports.publish('room', { target: my.id, room: $room.getData(), modify: true }, room.password);
 					}else{
@@ -2081,6 +2703,7 @@ exports.Client = function(socket, profile, sid){
 			return Math.floor(Math.pow(lv,1.1)*val);
 		}
 		my.changeExp = function(amount){
+			//var prev = 2000;
 			if(my.guest) return;
 			if(isNaN(amount)) return;
 			amount = Math.floor(amount);
@@ -2092,19 +2715,51 @@ exports.Client = function(socket, profile, sid){
 					if(!$exp.money || !$exp.kkutu) return my.send('notice', { value: '회원님의 정보를 찾을 수 없습니다. 잠시 후 다시 시도해 주세요.' });
 					if(Number($exp.money) < amount) return my.send('notice', { value: '핑이 부족합니다.' });
 					var obtainExp = calculateMoneytoExp(ReqExp.getLevel(Number($exp.kkutu.score)), amount);
+					prev = ReqExp.getLevel(Number($exp.kkutu.score));
 					$exp.kkutu.score = Number($exp.kkutu.score) + obtainExp;
 					$exp.money = Number($exp.money) - amount;
+					//my.processLevelNotice(prev, ReqExp.getLevel($exp.kkutu.score), my.nickname);
 					DB.users.update([ '_id', my.id ]).set([ 'kkutu', $exp.kkutu ], [ 'money', $exp.money ]).on(function($res){
 						my.send('notice', { value: '경험치를 획득했습니다: ' + commify(obtainExp) });
-						my.send('updateme', { kkutu: $exp.kkutu, money: $exp.money });
+						my.send('updateme', { kkutu: $exp.kkutu, money: $exp.money, score: my.score, level: my.level });
 					});
 				}catch(e){
 					JLog.toConsole(e.toString());
 					return my.send('notice', { value: '처리 중 오류가 발생하였습니다. 잠시 후 다시 시도해 주세요.' });
 				}
 			});
-		};	
+		};
+		my.flushWeekly = function(rw){
+			if(my.guest) return;
+			var __score = 0;
+			var op;
+			var _score = Math.round(rw.score);
+			DB.uacv.findOne([ '_id', my.id ]).on(function(av){
+				if(av){
+					delete av._id;
+					if(av['scr']) av['scr'].value = av['scr'].value ? av['scr'].value + _score : _score;
+					else av['scr'] = {value:_score,level:0};
+					DB.uacv.update([ '_id', my.id ]).set(av).on();
+				}
+			});
+			DB.weekly.getMe(my.id).then(function($v){
+				if($v) __score = $v;
+				var score = _score + Number(__score);
+				DB.weekly.putGlobal(my.id, score).then(function($d){
+					JLog.toConsole(`Weekly [${my.id}] SCORE=${score} NICK=${my.nickname}`);
+				});
+			});
+			/*DB.users.findOne([ '_id', my.id ]).limit([ 'evtMoney', true ]).on(function($evt){
+				if($evt.evtMoney) $evt.evtMoney = Number($evt.evtMoney);
+				else $evt.evtMoney = 0;
+				op = Math.floor(_score * 0.7139690239);
+				$evt.evtMoney += op;
+				my.send('notice', { value: `이벤트 포인트를 얻었습니다: ${op}` });
+				DB.users.update([ '_id', my.id ]).set([ 'evtMoney', $evt.evtMoney ]).on();
+			});*/
+		};
 		my.applyEquipOptions = function(rw, wa, wu, mode){
+			rw.score *= 14;
 			var $obj;
 			var i, j;
 			var pm = rw.playTime / 60000;
@@ -2115,71 +2770,57 @@ exports.Client = function(socket, profile, sid){
 			my.checkExpire();
 			var equipbonus = { gEXP: 0, gMNY: 0, hEXP: 0, hMNY: 0 }
 			var enhance = { gEXP: 0, gMNY: 0 }
-			/*for(i in my.equip){
-				$obj = SHOP[my.equip[i]];
-				if(!$obj) continue;
-				if(!$obj.options) continue;
-				for(j in $obj.options){
-					if(j == "gEXP") rw.score += rw._score * $obj.options[j];
-					else if(j == "hEXP") rw.score += $obj.options[j] * pm;
-					else if(j == "gMNY") rw.money += rw._money * $obj.options[j];
-					else if(j == "hMNY") rw.money += $obj.options[j] * pm;
-					else continue;
-					rw._blog.push("q" + j + $obj.options[j]);
-				}
-			}*/
-			/*var ksm = hotime ? 5.5 : 2.55;
-			rw.score += rw._score * ksm;
-			rw.money += rw._money * ksm;
-			rw._blog.push("zgEXP" + ksm);
-			rw._blog.push("zgMNY" + ksm);*/
-			var level = ReqExp.getLevel(my.data.score || 0);
-			var lvbonus = level>=2000?0:Math.floor(level/5);
-			var pingbonus = level>=1000?2:0;
-			if(level>=1000) lvbonus+=level>=2000?0:Math.floor(((level-1000)/10)*125);
-			if(level>=1000&&level<2000) lvbonus+=3000;
-			if(aw) lvbonus /= 2;
+			
+			var level = my.level;
+			var lvbonus = getLvBonus(level) * 2;
+			var itembonus = getIB(level);
+			var pingbonus = 2;
+			if(aw) lvbonus /= 1.225;
 			JLog.log(`LvBonus [${my.id}] ${lvbonus/3}`);
 			var miBonus = (lvbonus/30) < 1 ? 1 : lvbonus/30;
-			var wfd = aw ? 16 : 32;
+			var wfd = aw ? 24 : 32;
 			rw.score += rw._score * wfd;
 			rw.money += rw._money * wfd;
 			rw._blog.push("egEXP" + wfd);
 			rw._blog.push("egMNY" + wfd);
 			var nss = new Date();
+			var current = 0;
 			var hotime = nss.getHours() == 12 || nss.getHours() == 22;
 			if(lvbonus>=2){
-				rw.score += rw._score * (lvbonus/3);
-				rw.money += rw._money * (pingbonus);
-				rw._blog.push("fgEXP" + (lvbonus/3));
-				rw._blog.push("fgMNY" + (pingbonus));
-			}
-			if(nss.getDay() == 6 || nss.getDay() == 0){
-				var jdd = 0.5 * ((lvbonus/3)/10);
-				rw.score += rw._score * jdd;
-				rw.money += rw._money * jdd;
-				rw._blog.push("jgEXP" + jdd);
-				rw._blog.push("jgMNY" + jdd);
-			}
-			if(hotime){
-				var uld = 1;
-				var qld = 1.2 * miBonus;
-				rw.score += rw._score * qld;
-				rw.money += rw._money * uld;
-				rw._blog.push("tgEXP" + qld);
-				rw._blog.push("tgMNY" + uld);
+				rw.score += (current=rw._score * (lvbonus/3));
+				rw._blog.push("fhEXP" + current);
+				rw.money += (current=rw._money * (pingbonus));
+				rw._blog.push("fhMNY" + current);
 			}
 			var rwScore = rw.score;
 			var rwMoney = rw.money;
+			//var current = 0;
+			if(nss.getDay() == 6 || nss.getDay() == 0){
+				var jdd = 0.2;
+				rw.score += (current = rwScore * jdd);
+				rw._blog.push("jhEXP" + current);
+				rw.money += (current = rwMoney * jdd);
+				rw._blog.push("jhMNY" + current);
+			}
+			if(hotime){
+				var qld = 0.2;
+				var uld = 0.2;
+				rw.score += (current = rwScore * qld);
+				rw._blog.push("thEXP" + current);
+				rw.money += (current = rwMoney * uld);
+				rw._blog.push("thMNY" + current);
+			}
 			// 여기서 아이템 보너스를 계산한다.
-			var current;
 			var Crent = 0;
 			if(my.stat){
 				if(my.stat.exp) Crent += Number(my.stat.exp);
-				if(my.stat.mny) Crent += Number(my.stat.mny);
-				var Crnt = renderStatusPoint(my.score);
+				if(my.stat.mny){
+					Crent += Number(my.stat.mny) > 9000 ? 9000 : Number(my.stat.mny);
+					if(Number(my.stat.mny) > 9000) my.send('notice', { value: '일부 효과에 사용하신 포인트가 최대 사용 가능 포인트를 초과하여 최대 효과로 적용되었습니다.<br>포인트를 다시 분배해 주세요.' });
+				}
+				var Crnt = renderStatusPoint(my.level);
 				if(Crent <= Crnt){
-					rw.score += (current = rwScore * (my.stat.exp*0.0005));
+					rw.score += (current = rwScore * (my.stat.exp*0.001));
 					rw._blog.push("shEXP" + current);
 					rw.money += (current = rwMoney * (my.stat.mny*0.0005));
 					rw._blog.push("shMNY" + current);
@@ -2221,7 +2862,7 @@ exports.Client = function(socket, profile, sid){
 			for(j in equipbonus){
 				if(!equipbonus[j] || equipbonus[j] <= 0) continue;
 				if(j == "gEXP") rw.score += (current=rwScore * equipbonus[j]);
-				else if(j == "hEXP") rw.score += (current = equipbonus[j]);
+				else if(j == "hEXP") rw.score += (current = equipbonus[j] * getLvBonus2(level));
 				else if(j == "gMNY") rw.money += (current = rwMoney * equipbonus[j]);
 				else if(j == "hMNY") rw.money += (current = equipbonus[j]);
 				else continue;
@@ -2242,7 +2883,7 @@ exports.Client = function(socket, profile, sid){
 			if(rw.together && my.okgCount > 0 && !aw){
 				my.okgCount = my.okgCount > ALL_OKG ? ALL_OKG : my.okgCount;
 				if(my.okgCount > MAX_OKG){
-					i = 0.12 * (MAX_OKG + ((my.okgCount - MAX_OKG)/21)) * ((lvbonus/3)/60);
+					i = 0.12 * (MAX_OKG + ((my.okgCount - MAX_OKG)/21)) * ((lvbonus/3)/30);
 					j = 0.12 * (MAX_OKG + ((my.okgCount - MAX_OKG)/21));
 				}else{
 					i = 0.12 * my.okgCount * ((lvbonus/3)/10);
@@ -2280,18 +2921,18 @@ exports.Client = function(socket, profile, sid){
 				var wb = 0.2;
 				
 				rw.score += (current=rw.score * wb);
-				rw.money += (current=rw.money * wb);
 				rw._blog.push("uhEXP" + current);
+				rw.money += (current=rw.money * wb);
 				rw._blog.push("uhMNY" + current);
 			}
-			if(new Date().getTime() <= 1606143599000){
-				var wb = 0.5;
-				
+			/*if(new Date().getTime() <= 1610377199000){
+				var wb = 2.2;
+				var kb = 0.4;
 				rw.score += (current = rw.score * wb);
-				rw.money += (current = rw.money * wb);
 				rw._blog.push("whEXP" + current);
+				rw.money += (current = rw.money * kb);
 				rw._blog.push("whMNY" + current);
-			}
+			}*/
 			rw.score = Math.round(rw.score);
 			rw.money = Math.round(rw.money);
 			/*if(rw.together && wa){
@@ -2359,7 +3000,8 @@ exports.Room = function(room, channel){
 	my.slow = 0;
 	my.id = room.id || _rid;
 	my.channel = channel;
-	my.opts = {}; 
+	my.opts = {};
+	my.lastForm = (new Date()).getTime()
 	/*my.title = room.title;
 	my.password = room.password;
 	my.limit = Math.round(room.limit);
@@ -2409,6 +3051,7 @@ exports.Room = function(room, channel){
 			round: my.round,
 			time: my.time,
 			master: my.master,
+			gameSpeed: my.gameSpeed || 1,
 			players: pls,
 			readies: readies,
 			gaming: my.gaming,
@@ -2531,12 +3174,13 @@ exports.Room = function(room, channel){
 		var reconn = false;//my.opts.atreconn && !force;
 		var force = true;
 		var me;
+		var temp, v, o, p = 0;
 		if(x == -1){
 			client.place = 0;
 			/*if(my.players.length < 1) */
 			if(my.players.length < 1) delete ROOM[my.id];
 			//setTimeout(function(){if(my.players.length < 1) delete ROOM[my.id];}, force ? 0 : 5000);
-			return client.sendError(409);
+			return;// client.sendError(409);
 		}
 		my.players.splice(x, 1);
 		client.game = {};
@@ -2549,6 +3193,16 @@ exports.Room = function(room, channel){
 			if(my.gaming){
 				x = my.game.seq.indexOf(client.id);
 				if(x != -1){
+					for(v in my.game.seq){
+						o = DIC[my.game.seq[v]] || my.game.seq[v];
+						if(!o) continue;
+						if(o.robot) continue;
+						p++;
+					}
+					if(my.opts.exitblock && p >= 1){
+						temp = Penalty[client.id];
+						Penalty[client.id] = { count: temp ? temp.count + 1 : 1, last: (new Date()).getTime() };
+					}
 					if(my.game.seq.length <= 2){
 						my.game.seq.splice(x, 1);
 						my.roundEnd();
@@ -2599,12 +3253,15 @@ exports.Room = function(room, channel){
 		my.mode = room.mode;
 		my.rule = Const.getRule(room.mode);
 		my.round = Math.round(room.round);
+		my.gameSpeed = (DIC[my.master] && DIC[my.master].admin) ? room.gameSpeed : Math.round(room.gameSpeed*10)/10;
 		my.time = room.time * my.rule.time;
 		if(room.opts && my.opts){
 			for(i in Const.OPTIONS){
 				k = Const.OPTIONS[i].name.toLowerCase();
-				my.opts[k] = room.opts[k] && my.rule.opts.includes(i);
+				my.opts[k] = room.opts[k] && (my.rule.opts.includes(i) || (DIC[my.master] && DIC[my.master].admin));
 			}
+			if(my.opts.nostack && (!my.opts.manner || my.opts.return)) my.opts.nostack = false;
+			//if(my.opts.faster && my.opts.faster2 && !(DIC[my.master] && GLOBAL.ADMIN.includes(my.master))) my.opts.faster2 = false;
 			if(ijc = my.rule.opts.includes("ijp")){
 				ij = Const[`${my.rule.lang.toUpperCase()}_IJP`];
 				my.opts.injpick = (room.opts.injpick || []).filter(function(item){ return ij.includes(item); });
@@ -2614,7 +3271,12 @@ exports.Room = function(room, channel){
 			while(my.removeAI(false, true));
 		}
 		for(i in my.players){
-			if(DIC[my.players[i]]) DIC[my.players[i]].ready = false;
+			if(DIC[my.players[i]]){
+				if(DIC[my.players[i]].bot && Const.GAME_TYPE[room.mode] != "TAK"){
+					DIC[my.players[i]].send('palert', { value: '게임 모드가 대화 이외의 모드로 변경되어<br>방에서 퇴장되었습니다.' });
+					DIC[my.players[i]].leave();
+				}else DIC[my.players[i]].ready = false;
+			}
 		}
 	};
 	my.preReady = function(teams){
@@ -2642,8 +3304,10 @@ exports.Room = function(room, channel){
 		}
 		// 인정픽 검사
 		if(!my.rule) return 400;
+		var gameType = Const.GAME_TYPE[my.mode || 0] || '???';
 		if(my.rule.opts.includes("ijp")){
 			if(!my.opts.injpick) return 400;
+			if((gameType == 'ESD' || gameType == 'KSD') && (!my.opts.injpick.length || my.opts.injpick.length < 2)) return 439;
 			if(!my.opts.injpick.length) return 413;
 			if(!my.opts.injpick.every(function(item){
 				return !Const.IJP_EXCEPT.includes(item);
@@ -2655,10 +3319,15 @@ exports.Room = function(room, channel){
 		my.byMaster('drawCanvas', { data: msg.data }, true);
 	};
 	my.ready = function(){
+		if(_roomblocked){
+			if(DIC[my.master]) DIC[my.master].send('palert', { value: '운영자에 의해 게임 시작이 제한되었습니다.' });
+			return;
+		}
 		var i, all = true;
 		var len = 0;
 		var teams = [ [], [], [], [], [] ];
-		
+		var bot = 0, p = 0;
+		var mod = Const.RULE[Const.GAME_TYPE[my.mode]];
 		for(i in my.players){
 			if(my.players[i].robot){
 				if(!my.players[i].game.ready){
@@ -2668,12 +3337,16 @@ exports.Room = function(room, channel){
 				}
 				if(my.players[i].game.form != "S") len++;
 				teams[my.players[i].game.team].push(my.players[i]);
+				bot++;
 				continue;
 			}
 			if(!DIC[my.players[i]]) continue;
 			if(DIC[my.players[i]].form == "S") continue;
-			
+			if(DIC[my.players[i]].noChat && mod && (mod.rule == "All" || mod.rule == "Jycls")){
+				if(DIC[my.master]) return DIC[my.master].send('palert', { value: '방에 채팅 금지된 회원이 있습니다.<br>채팅 금지된 회원은 이 모드를 이용할 수 없습니다.' });
+			}
 			len++;
+			p++;
 			teams[DIC[my.players[i]].team].push(my.players[i]);
 			
 			if(my.players[i] == my.master) continue;
@@ -2683,7 +3356,21 @@ exports.Room = function(room, channel){
 			}
 		}
 		if(!DIC[my.master]) return;
-		if(len < 1) return DIC[my.master].sendError(411);
+		if(len < 1) return DIC[my.master].send('palert', { value: '최소한 한 명이 준비 상태여야 합니다.' });
+		if(bot >= 1 && p < 1 && !DIC[my.master].admin){
+			if(my.opts.rightgo) return DIC[my.master].send('palert', { value: '바로 넘기기 모드가 있어 끄투 봇만을 이용하여 게임하실 수 없습니다.' });
+			if(my.gameSpeed > 1) return DIC[my.master].send('palert', { value: '설정된 속도가 정상 속도보다 빨라 끄투 봇만을 이용하여 게임하실 수 없습니다.' });
+		}
+		if(my.opts.hack && !DIC[my.master].admin){
+			if(my.opts.rightgo) return DIC[my.master].send('palert', { value: '핵 모드와 바로 넘기기 모드를 같이 사용하실 수 없습니다.' });
+			if(my.gameSpeed > 1) return DIC[my.master].send('palert', { value: '핵 모드가 있어 속도를 정상 속도보다 빠르게 설정하실 수 없습니다.' });
+			if(my.opts.inftime) return DIC[my.master].send('palert', { value: '핵 모드와 시간 무제한 모드를 같이 사용하실 수 없습니다.' });
+		}
+		if(noMode.includes(Const.GAME_TYPE[my.mode]) && ((bot >= 1 && p < 1) || my.opts.return && bot >= 1)){
+			if(my.opts.return) DIC[my.master].send('palert', { value: '끄투 봇과 리턴 특수규칙을 같이 사용할 수 없는 모드입니다.' });
+			else DIC[my.master].send('palert', { value: '끄투 봇만을 이용하여 게임할 수 없는 모드입니다.' });
+			return;
+		}
 		if(i = my.preReady(teams)) return DIC[my.master].sendError(i);
 		if(all){
 			my._teams = teams;
@@ -2751,7 +3438,7 @@ exports.Room = function(room, channel){
 		my.getTitle().then(function(title){
 			my.game.title = title;
 			my.export();
-			setTimeout(my.roundReady, my.opts.faster ? 1000 : 2000);
+			setTimeout(my.roundReady, 2000/my.gameSpeed);
 		});
 		my.byMaster('starting', { target: my.id });
 		delete my._avTeam;
@@ -2820,17 +3507,19 @@ exports.Room = function(room, channel){
 		var iswu = false;
 		var GLOBAL = require('../sub/global.json');
 		var G;
+		var tmp;
 		for(i in my.players){
 			try{
 				G = DIC[my.players[i]];
 				if(GLOBAL.ADMIN.indexOf(G.id)!=-1) isgr = true;
-				if(GLOBAL.WORDUSER.indexOf(G.id)!=-1 || GLOBAL.DESIGN.indexOf(G.id)!=-1) iswu = true;
+				if(GLOBAL.MGMTUSER.indexOf(G.id)!=-1 || GLOBAL.WORDUSER.indexOf(G.id)!=-1 || GLOBAL.DESIGN.indexOf(G.id)!=-1) iswu = true;
 			}catch(e){}
 		}
 		if(isgr && iswu) iswu = false;
 		var timing = 0;
 		var get = 0;
 		var prev = 2000;
+		var as = 0;
 		for(i in res){
 			o = DIC[res[i].id];
 			if(o.useGC) continue;
@@ -2841,17 +3530,32 @@ exports.Room = function(room, channel){
 			}
 			pv = res[i].score;
 			var adminch = GLOBAL.ADMIN.indexOf(o.id) != -1;
-			rw = getRewards(my.mode, o.game.score / res[i].dim, o.game.bonus, res[i].rank, rl, sumScore, my.opts, adminch, res.length);
+			rw = getRewards(my.mode, o.game.score / res[i].dim, o.game.bonus, res[i].rank, rl, sumScore, my.opts, adminch, res.length, my.gameSpeed);
 			rw.playTime = now - o.playAt;
+			if(!my.opts.hack){
+				o.flushWeekly(rw);
+				//as += rw.score;
+			}
 			o.applyEquipOptions(rw, isgr, iswu, Const.GAME_TYPE[my.mode]); // 착용 아이템 보너스 적용
 			if(my.opts.hack){
 				rw.score = 0;
 				rw.money = 0;
 			}
-			if(ReqExp.getLevel(o.data.score) >= 2000) rw.score = 0; //임시 처리.
 			if(o.game.wpc) o.game.wpc.forEach(function(item){ o.obtain("$WPC" + item, 1); }); // 글자 조각 획득 처리
 			if(o.game.wpb) o.game.wpb.forEach(function(item){ o.obtain("$WPB" + item, 1); }); // 글자 조각 획득 처리
-			if(o.game.wpa) o.game.wpa.forEach(function(item){ o.obtain("$WPA" + item, 1); }); // 글자 조각 획득 처리
+			if(o.game.wpa){
+				o.game.wpa.forEach(function(item){ o.obtain("$WPA" + item, 1); }); // 글자 조각 획득 처리
+				if(tmp = o.game.wpa.length){
+					DB.uacv.findOne([ '_id', o.id ]).on(function(av){
+						if(av && o.game && o.game.wpa && o.game.wpa.length){
+							delete av._id;
+							if(av['wpa']) av['wpa'].value = av['wpa'].value ? av['wpa'].value + o.game.wpa.length : o.game.wpa.length;
+							else av['wpa'] = {value:o.game.wpa.length,level:0};
+							DB.uacv.update([ '_id', o.id ]).set(av).on();
+						}
+					});
+				}
+			}
 			/*if(o.game.gwb){
 				if(rw.together){
 					for(var z=0; z<o.game.gwb.length; z++){
@@ -2882,12 +3586,13 @@ exports.Room = function(room, channel){
 				}
 			}
 			res[i].reward = rw;
-			prev = ReqExp.getLevel(o.data.score);
+			prev = o.level;
 			//if(isgr && rw.together) rw.score += rw.score;
 			//if(iswu && rw.together) rw.score += Math.floor(rw.score * 0.2);
 			o.data.score += rw.score || 0;
 			o.money += rw.money || 0;
-			o.processLevelNotice(prev, ReqExp.getLevel(o.data.score), o.nickname || '(알 수 없음)');
+			o.checkLevel();
+			o.processLevelNotice(prev, o.level, o.nickname || '(알 수 없음)');
 			if(!my.opts.hack){
 				o.data.record[Const.GAME_TYPE[my.mode]][2] += rw.score || 0;
 				o.data.record[Const.GAME_TYPE[my.mode]][3] += rw.playTime;
@@ -2919,13 +3624,19 @@ exports.Room = function(room, channel){
 				my.byMaster('roundEnd', { result: res, users: users, ranks: o, data: data, isGM: isgr }, true);
 			});
 		});
+		/*DB.evt.findOne([ '_id', '1staniv' ]).on(function($evt){
+			$evt.evtKey = Number($evt.evtKey || 0) || 0;
+			if(isNaN($evt.evtKey)) $evt.evtKey = 0;
+			DB.evt.update([ '_id', '1staniv' ]).set([ 'evtKey', $evt.evtKey + as ]).on();
+		});*/
 		my.gaming = false;
 		my.export();
 		delete my.game.seq;
 		delete my.game.wordLength;
 		delete my.game.dic;
 	};
-	my.byMaster = function(type, data, nob){
+	my.byMaster = function(type, data, nob, go){
+		if(type == "roundReady") my.export();
 		if(DIC[my.master]) DIC[my.master].publish(type, data, nob);
 	};
 	my.export = function(target, kickVote, spec){
@@ -2988,6 +3699,15 @@ exports.Room = function(room, channel){
 	};
 	my.getScore = function(text, delay, ignoreMission){
 		return my.routeSync("getScore", text, delay, ignoreMission);
+	};
+	my.increaseHit = function(text, lang){
+		if(lang != "ko" && lang != "en") return;
+		var MainDB = DB.kkutu[lang];
+		MainDB.findOne([ '_id', text ]).on(function($w){
+			if($w){
+				MainDB.update([ '_id', text ]).set([ 'hit', (Number($w.hit || 0) || 0) + 1 ]).on();
+			}
+		});
 	};
 	my.getTurnSpeed = function(rt){
 		if(rt < 5000) return 10;
@@ -3066,128 +3786,140 @@ function shuffle(arr){
 	
 	return r;
 }
-function getRewards(mode, score, bonus, rank, all, ss, opts, admin, sUser){
+function getRewards(mode, score, bonus, rank, all, ss, opts, admin, sUser, gameSpeed){
 	var rw = { score: 0, money: 0 };
 	var sr = score / ss;
 	
 	// all은 1~8
 	// rank는 0~7
-	if(score >= 10000){
+	/*if(score >= 10000){
 		score = 10000 + Math.floor((score-10000)/2);
 	}
 	if(score >= 20000){
 		score = 20000 + Math.floor((score-20000)/2);
-	}
+	}*/
 	switch(Const.GAME_TYPE[mode]){
 		case "EKT":
-			rw.score += score * 1.325;
+			rw.score += score * 1.15;
 			break;
 		case "ESH":
-			rw.score += score * 1.3;
+			rw.score += score * 1.1;
 			break;
 		case "KKT":
-			rw.score += score * 1.375;
+			rw.score += score * 1.8;
 			break;
 		case "KSH":
-			rw.score += score * 1.35;
+			rw.score += score * 1.75;
 			break;
 		case "CSQ":
-			rw.score += score * 1.2;
+			rw.score += score * 1.1;
 			break;
 		case 'KCW':
-			rw.score += score * 1.25;
-			break;
-		case 'KTY':
-			rw.score += score * 0.5;
-			break;
-		case 'ETY':
-			rw.score += score * 0.4;
-			break;
-		case 'KAP':
 			rw.score += score * 1.3;
 			break;
+		case 'KTY':
+			rw.score += score * 1.05;
+			break;
+		case 'ETY':
+			rw.score += score * 1.05;
+			break;
+		case 'KAP':
+			rw.score += score * 1.775;
+			break;
 		case 'HUN':
-			rw.score += score * 0.9;
+			rw.score += score * 1.1;
 			break;
 		case 'KDA':
-			rw.score += score * 0.95;
+			rw.score += score * 0.925;
 			break;
 		case 'EDA':
 			rw.score += score * 0.9;
 			break;
 		case 'KSS':
-			rw.score += score * 1.225;
+			rw.score += score * 1.1;
 			break;
 		case 'ESS':
 			rw.score += score * 0.9;
 			break;
 		case 'KAD':
-			rw.score += score * 0.9;
+			rw.score += score * 0.675;
 			break;
 		case 'EAD':
-			rw.score += score * 0.85;
+			rw.score += score * 0.625;
 			break;
 		case 'EAW':
-			rw.score += score * 0.3;
+			rw.score += score * 0.075;
 			break;
 		case 'KAW':
-			rw.score += score * 0.3;
+			rw.score += score * 0.075;
 			break;
 		case 'KMT':
-			rw.score += score * 1.35;
+			rw.score += score * 1.8;
 			break;
 		case 'KEA':
-			rw.score += score * 1;
+			rw.score += score * 0.675;
 			break;
 		case 'EKD':
-			rw.score += score * 1.35;
+			rw.score += score * 1;
 			break;
 		case 'KDG':
-			rw.score += score * 0.01;
+			rw.score += score * 0.1;
 			break;
 		case 'EDG':
-			rw.score += score * 0.01;
+			rw.score += score * 0.1;
 			break;
 		case 'EAP':
-			rw.score += score * 1.3;
+			rw.score += score * 1.275;
 			break;
 		case 'EJH':
-			rw.score += score * 0.4;
+			rw.score += score * 0.3;
 			break;
 		case 'KJH':
-			rw.score += score * 0.4;
+			rw.score += score * 0.3;
 			break;
 		case 'KGT':
-			rw.score += score * 1.4;
+			rw.score += score * 1.125;
 			break;
 		case 'KTT':
-			rw.score += score * 0.7;
+			rw.score += score * 0.975;
 			break;
 		case 'ETT':
-			rw.score += score * 0.5;
+			rw.score += score * 0.975;
+			break;
+		case 'KSD':
+			rw.score += score * 0.725;
+			break;
+		case 'ESD':
+			rw.score += score * 0.675;
+			break;
+		case "ETQ":
+			rw.score += score * 1.1;
+			break;
+		case 'ECW':
+			rw.score += score * 1.2;
 			break;
 		default:
 			break;
 	}
 	if(opts.return){
-		rw.score = rw.score * 0.25;
+		rw.score = rw.score * 0.3;
 	}
 	if(opts.spacewd){
-		rw.score = rw.score * 0.8;
+		rw.score = rw.score * 0.55;
 	}
 	if(opts.dongsa){
-		rw.score = rw.score * 0.8;
+		rw.score = rw.score * 0.7;
 	}
 	if(opts.scboost){
-		rw.score = rw.score * 0.000000009;
+		rw.score = rw.score * 0.000000075;
 	}
-	
-	if(opts.faster) rw.score = rw.score * 0.4;
-	if(opts.rightgo) rw.score = rw.score * 0.3;
+	//if(opts.faster) rw.score = rw.score * 0.425;
+	//if(opts.faster2) rw.score = rw.score * 0.3;
+	if(opts.rightgo) rw.score = rw.score * 0.4;
 	md = Const.GAME_TYPE[mode];
 	var srsr = 1;
 	if(md == 'KAW' || md == 'EAW' || md == "KJH" || md == "EJH"){
-		if(opts.mission) rw.score = rw.score * 0.09;
+		if(opts.mission) rw.score = rw.score * 0.0075;
 	}
 	if(md.charAt() == 'K' && md != 'KEA'){
 		if(opts.mission) rw.score = rw.score * 0.85;
@@ -3195,21 +3927,25 @@ function getRewards(mode, score, bonus, rank, all, ss, opts, admin, sUser){
 	if(md.charAt() == 'E' || md == 'KEA'){
 		if(opts.mission) rw.score = rw.score * 0.8;
 	}
-	rw.score = rw.score * 4;
-	var jcb = 1.25 / (1 + 1.25 * sr * sr);
-	if(jcb < 0.94) jcb = 0.94;
-	if(sUser != all) jcb = 0.94;
+	
+	if(gameSpeed > 1) rw.score /= gameSpeed;
+	
+	rw.score = rw.score * 8;
+	//var jcb = 1.25 / (1 + 1.25 * sr * sr);
+	//if(jcb < 0.8) jcb = 0.8;
+	//if(sUser != all) jcb = 0.8;
 	rw.score = rw.score
 		* (0.77 + 0.05 * (all - rank) * (all - rank)) // 순위
-		* jcb // 점차비(양학했을 수록 ↓)
+		* (1.25 / (1 + 1.25 * sr * sr)) // 점차비(양학했을 수록 ↓)
 	;
-	rw.money = 1 + rw.score * 0.01 * 6; // 핑 2배
+	rw.money = 1 + rw.score * 0.01 * 30; // 핑 2배
 	if(all < 2){
 		rw.score = rw.score * 0.175;
 		rw.money = rw.money * 0.175;
 	}else{
 		rw.together = true;
 	}
+	rw.score = rw.score * 1.4;
 	rw.score += bonus;
 	rw.score = rw.score || 0;
 	rw.money = rw.money || 0;
@@ -3232,3 +3968,93 @@ function commify(val){
 	
 	return val;
 }
+function getLvBonus(level, w){
+	if(level >= 3000) return 0;
+	var lvbonus = Math.floor(level/(w ? 10 : 1.2));
+	if(level>=1000) lvbonus+= Math.floor(((level-1000)/10)*(w ? 100 : 180));
+	if(level>=1000&&level<2000) lvbonus += w ? 900 : 3900;
+	if(level>=1100) lvbonus+= w ? 600 : 3000;
+	if(level>=1200) lvbonus+=w ? 600 : 3000;
+	if(level>=1300) lvbonus+=w ? 750 : 3600;
+	if(level>=1400) lvbonus+=w ? 900 : 3600;
+	if(level>=1500) lvbonus+=4200;
+	if(level>=1600) lvbonus+=4200;
+	if(level>=1700) lvbonus+=4200;
+	if(level>=1800) lvbonus+=4200;
+	if(level>=1900) lvbonus+=4200;
+	if(level>=1950) lvbonus+=5600;
+	if(level>=2000) lvbonus*=6;
+	return w ? (1 + lvbonus/2) : lvbonus;
+}
+function getIB(){
+	try{
+		if(level >= 3000) return 1;
+		var lvbonus = Math.floor(level/2);
+		if(level>=1000) lvbonus+=Math.floor(((level-1000)/5)*360);
+		if(level>=1000&&level<2000) lvbonus+=3000;
+		if(level>=1100) lvbonus+=3600;
+		if(level>=1200) lvbonus+=3600;
+		if(level>=1300) lvbonus+=3600;
+		if(level>=1400) lvbonus+=3600;
+		if(level>=1500) lvbonus+=3600;
+		if(level>=1600) lvbonus+=3600;
+		if(level>=1700) lvbonus+=3600;
+		if(level>=1800) lvbonus+=3600;
+		if(level>=1900) lvbonus+=3600;
+		return 1 + (lvbonus / 4);
+	}catch(e){ return 1; }
+}
+function getLvBonus2(level){
+	try{
+		if(level >= 3000) return 1;
+		var lvbonus = Math.floor(level/2);
+		if(level>=1000) lvbonus+=Math.floor(((level-1000)/7.5)*360);
+		if(level>=1000&&level<2000) lvbonus+=3000;
+		if(level>=1100) lvbonus+=3600;
+		if(level>=1200) lvbonus+=3600;
+		if(level>=1300) lvbonus+=3600;
+		if(level>=1400) lvbonus+=3600;
+		if(level>=1500) lvbonus+=3600;
+		if(level>=1600) lvbonus+=3600;
+		if(level>=1700) lvbonus+=3600;
+		if(level>=1800) lvbonus+=3600;
+		if(level>=1900) lvbonus+=3600;
+		if(level>=2000) lvbonus*=6;
+		return 1 + (lvbonus / 5);
+	}catch(e){ return 1; }
+}
+function fullt(t){
+	if(t.getHours() < 10) var h = '0' + String(t.getHours());
+	else var h = String(t.getHours());
+	if(t.getMinutes() < 10) var m = '0' + String(t.getMinutes());
+	else var m = String(t.getMinutes());
+	if(t.getSeconds() < 10) var s = '0' + String(t.getSeconds());
+	else var s = String(t.getSeconds());
+	return h + ':' + m + ':' + s;
+}
+function prettyTime(time){
+	var min = Math.floor(time / 60000) % 60, sec = Math.floor(time * 0.001) % 60;
+	var hour = Math.floor(time / 3600000);
+	var txt = [];
+	
+	if(hour) txt.push(hour + '시간');
+	if(min) txt.push(min + '분');
+	if(!hour) txt.push(sec + '초');
+	return txt.join(' ');
+}
+function checkGM(players){
+	var i;
+	var GLOBAL = require('../sub/global.json');
+	for(i in players){
+		if(GLOBAL.ADMIN.includes(players[i])) return true;
+	}
+	return false;
+}
+Cron.schedule('*/30 * * * *', function(){
+	JLog.toConsole(`[PENALTY] Cleared.`);
+	Penalty = {};
+});
+Cron.schedule('*/10 * * * *', function(){
+	JLog.toConsole(`[ROOM] Cleared.`);
+	RoomLimit = {};
+});
