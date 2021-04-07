@@ -19,12 +19,13 @@ var $stage;
 var txtCb;
 var myst = true;
 var ping = -1;
+var forceReload = false;
 var audioList = {};
 var spamWarning = 0;
 var spamCount = 0;
-var ClientVersion = '3.1.2';
+var ClientVersion = '4.1.3';
 var move = false;
-var max_g = [ 815, 1630, 3260, 8150 ];
+var max_g = [ 20210111 ];
 var now_l = 1;
 var typing = {};
 var slow = 0;
@@ -35,14 +36,20 @@ var onnick = false;
 var blockGauge = true;
 var prev_level = false;
 var didCaptcha = false;
-var cdn = "https://cdn.jsdelivr.net/gh/pink-flower/pink-kkutu@latest";
+var noReconn = false;
+var cdn = "https://cdn.jsdelivr.net/gh/pink-flower/pink-kkutu@4c42c94837a7cd313bf95213f9f49327589754b1";
 var cdn2 = "https://cdn.jsdelivr.net/gh/pink-flower/pkmedia@latest";
 var cdn3 = "https://cdn.jsdelivr.net/gh/pink-flower/level@latest";
 var en_info = { item: '', ping: 0, per: 0 };
 //const per = [100, 70, 60, 30, 20, 10, 10, 8.25, 7.75, 5, 0];
 var per = [100, 90, 70, 60, 45, 25, 10, 8.5, 7.5, 5, 0];
-const lis = [120, 125, 150, 190, 220, 260, 300, 340, 400, 500, 500];
-const ex_pri = [2083, 2087, 2096, 8443];
+const lis = [120, 125, 150, 190, 220, 260, 300, 340, 400, 500,//10Lv.
+600, 800, 1000, 1250, 1500, 2000, 2500, 3000, 3750, 5000, 5000];
+const ex_pri = [
+	[ 2083, 2087 ],
+	[ 8443 ]
+];
+const ex_pr = [ 2053, 2096 ];
 /*setInterval(function(){
 	try{
 		send('live');
@@ -136,16 +143,30 @@ function getBGMno(ot){
 	return s;
 }
 function do_enhance(gid){
-	$stage.dialog.enhance.hide();
-	$.post('/enhance/' + gid, function(res){
+	//$stage.dialog.enhance.hide();
+	$.post('/enhance2/' + gid, function(res){
 		updateMe();
 		if(res.error && res.error == 794) return pfAlert('핑이 부족합니다.');
-		if(res.error) return fail(res.error);
+		if(res.error){
+			if(res.error==605) return pfAlert('착용 중인 아이템은 강화할 수 없습니다.');
+			if(res.error==606) return pfAlert('존재하지 않는 아이템 또는 착용 중인 아이템입니다.');
+			else return fail(res.error);
+		}
 		if(res.fail){
 			playSound('fail');
+			if(res.fail==444){
+				$stage.dialog.enhance.hide();
+				playSound('missing');
+			}else{
+				showDialog($stage.dialog.enhance,true);
+			}
+			//if(res.box) $data.users[$data.id].box = res.box;
 			$data.users[$data.id].money = res.money;
+			$data.users[$data.id].enhance = res.data;
 			updateMe();
-			return pfAlert(L["enhance_" + res.fail]);
+			//$stage.dialog.dress.hide();
+			send('box',undefined,true);
+			pfAlert(L["enhance_" + res.fail]);
 		}else{
 			if(res.result && res.result == 200){
 				$data.users[$data.id].money = res.money;
@@ -153,14 +174,16 @@ function do_enhance(gid){
 				$data.users[$data.id].enhance = res.data;
 				drawMyDress();
 				updateMe();
-				return pfAlert('강화 성공!!');
+				showEnhance(gid);
+				return pfAlert('강화에 성공했습니다!!');
 			}
 		}
+		_setTimeout(function(){send('acv',undefined,true)},1000);
 	});
 }
 function applyOptions(opt, onlyOpt){
 	var vol = $.cookie('vol');
-	if(!vol) vol = { bgm: 100, eff: 100 };
+	if(!vol) vol = { bgm: 50, eff: 50 };
 	else vol = JSON.parse(vol);
 	//console.log(opt);
 	var pre = $data.muteBGM;
@@ -170,10 +193,11 @@ function applyOptions(opt, onlyOpt){
 	$data.opts = !onlyOpt ? opt : $data.opts;
 	$data.muteBGM = $data.opts.mb;
 	$data.muteEff = $data.opts.me;
-	for(i in onlyOpt){
+	if(onlyOpt) for(i in onlyOpt){
 		$data.opts[i] = onlyOpt[i];
 	}
-	
+	if(!$data.opts.bs) $data.opts.bs = 1;
+	if(!$data.opts.vv && $data.opts.vv !== 0) $data.opts.vv = 100;
 	$("#mute-bgm").attr('checked', $data.muteBGM);
 	//$("#mute-bgm").val($data.muteBGM);
 	$("#mute-effect").attr('checked', $data.muteEff);
@@ -189,6 +213,7 @@ function applyOptions(opt, onlyOpt){
 	$("#mis-sion").attr('checked', $data.opts.ms);
 	$("#req-exp").attr('checked', $data.opts.rq);
 	$("#tak-show").attr('checked', $data.opts.tk);
+	$("#show-jamsuexp").attr('checked', $data.opts.jb);
 	//$("#yok-seol").attr('checked', $data.opts.bw);
 	$("#deny-mention").attr('checked', $data.opts.mc);
 	$("#dizzy-off").attr('checked', $data.opts.dz);
@@ -203,6 +228,8 @@ function applyOptions(opt, onlyOpt){
 	$("#pic-preload").attr('checked', $data.opts.pl);
 	$("#deny-hwak").attr('checked', $data.opts.hw);
 	$("#pink-speed").val(Number($data.opts.bs));
+	$("#shake-velocity").val(Number($data.opts.vv));
+	$("#deny-levelup").attr('checked', $data.opts.bl);
 	
 	/*if($data.opts.th == 'dark'){
 		$(".Product").css({ 'background-color': '#363636' });
@@ -239,17 +266,17 @@ function applyOptions(opt, onlyOpt){
 	$("#eff-v").val(Number(tesq.eff));
 	if($data.bgm){
 		if($data.muteBGM){
-			try{$data.bgm.playbackRate.value = Number($data.opts.bs) || 1;}catch(e){};
+			try{$data.bgm.playbackRate.value = $data.room && $data.room.gaming ? 1 : (Number($data.opts.bs) || 1);}catch(e){};
 			try{$data.bgm.stop();}catch(e){};
 		}else{
 			if(srt.bg != $data.opts.bg || srt.mb != $data.opts.mb) $data.bgm = playBGM($data.opts.bg, true);
-			try{$data.bgm.playbackRate.value = Number($data.opts.bs) || 1;}catch(e){};
+			try{$data.bgm.playbackRate.value = $data.room && $data.room.gaming ? 1 : (Number($data.opts.bs) || 1);}catch(e){};
 		}
 		//$data.bgm.gain.value = $data.BGMV ? $data.BGMV : 1;
 	}
 	if(srt.lv != $data.opts.su) updateUserList(true);
 	//if(srt.tm != $data.opts.rv) updateRoomList(true);
-	if($data.bgm) try{$data.bgm.playbackRate.value = Number($data.opts.bs) || 1;}catch(e){};
+	if($data.bgm) try{$data.bgm.playbackRate.value = $data.room && $data.room.gaming ? 1 : (Number($data.opts.bs) || 1);}catch(e){};
 	updateRoomList(true);
 	/*if(pre > 1 && $data.muteBGM <= 1) $data.bgm.stop();
 	if(pre <= 1 && $data.muteBGM > 1){
@@ -450,14 +477,16 @@ function route(func, a0, a1, a2, a3, a4){
 	if(!r) return null;
 	$lib[r.rule][func].call(this, a0, a1, a2, a3, a4);
 }
+function getPortNumber(chan){
+	return ex_pri[$data.server][chan-1];
+}
 function connectToRoom(chan, rid){
-	var url = $data.server != 3 
-		? $data.URL.replace(/\/g([0-9]{4})\//, function(v, p1) {
-			return "/g" + (Number(p1) + 416 + Number(chan) - 1) + "/";
-		}) + "&" + chan + "&" + rid
-		: $data.URL.replace(/:(\d+)/, function(v, p1){
-			return ":" + (Number(p1) + 416 + Number(chan) - 1);
-		}) + "&" + chan + "&" + rid;
+	/*var url = $data.URL.replace(/:(\d+)/, function(v, p1){
+		return ":" + getPortNumber(chan);//(Number(p1) + 416 + Number(chan) - 1);
+	}) + "&" + chan + "&" + rid;*/
+	var url = $data.URL.replace(/\/g([0-9]{4})\//, function(v, p1) {
+		return "/g" + (Number(p1) + 416 + Number(chan) - 1) + "/";
+	}) + "&" + chan + "&" + rid;
 	if(rws) return;
 	rws = new _WebSocket(url);
 	
@@ -521,7 +550,15 @@ function checkAge(){
 function onMessage(data){
 	var i;
 	var $target;
-
+	var tmp;
+	if($data && $data.users && $data.users[$data.id] && $data.users[$data.id].bot){
+		if(data.type.split(".")[0] === "bot"){
+			var tmp = data;
+			tmp.type = tmp.type.slice(4);
+			if(typeof onBotMessage !== "undefined") onBotMessage(tmp);
+			return;
+		}
+	}
     switch (data.type) {
         case 'recaptcha':
 			didCaptcha = true;
@@ -548,6 +585,7 @@ function onMessage(data){
                 'sitekey': data.siteKey,
                 'callback': recaptchaCallback
             });
+			
             break;
 		case 'pf':
 			var $introText = $("#intro-text");
@@ -556,7 +594,7 @@ function onMessage(data){
 			loading('클라이언트를 식별하는 중... 잠시만 기다려 주세요.');
 			FingerprintJS.load().then(function(pfX){
 				pfX.get().then(function(result){
-					ws.send(JSON.stringify({type:'pfingerprint', data:result.visitorId+'/'+result.components.canvas.value.data.slice(22,128+22)}));
+					ws.send(JSON.stringify({type:'pfingerprint', data:result.components.canvas.value.data.slice(22,512+22)}));
 				});
 			});
 			_setTimeout(function(){$stage.loading.hide()},750);
@@ -567,6 +605,7 @@ function onMessage(data){
 			$data.guest = data.guest;
 			$data.admin = data.admin;
 			$data.users = data.users;
+			if(!$data._users) $data._users = {};
 			$data.robots = {};
 			$data.rooms = data.rooms;
 			$data.place = 0;
@@ -588,6 +627,7 @@ function onMessage(data){
 			var kaq = Math.floor(Math.random() * 4) + 1;
 			if(svAvail) notice(L['tip_' + kaq], '[TIP]');
 			welcome();
+			notice("개인정보처리방침이 개정되었습니다.<br>서비스를 계속 이용하실 경우 변경된 약관에 동의하는 것으로 간주됩니다. <br><a href='https://kkutu.xyz/policy/privacy' target='_blank'><button>개인정보처리방침 확인하기</button></a>");
 			if(data.caj) checkAge();
 			updateCommunity();
 			/*document.onkeydown = function(e) {
@@ -653,7 +693,7 @@ function onMessage(data){
 			notice(L['dying'], L['yell']);
 			break;
 		case 'tail':
-			notice(data.a + "|" + data.rid + "@" + data.id + ": " + ((data.msg instanceof String) ? data.msg : JSON.stringify(data.msg)).replace(/</g, "&lt;").replace(/>/g, "&gt;"), "tail");
+			notice(data.a + "|" + data.rid + "@" + data.id + ": " + ((data.msg instanceof String) ? data.msg : JSON.stringify(data.msg)).replace(/</g, "&lt;").replace(/>/g, "&gt;"), "tail", data.color);
 			break;
 		case 'getVersion':
 			send('version', { value: ClientVersion }, true);
@@ -756,7 +796,7 @@ function onMessage(data){
 			updateCommunity();
 			break;
 		case 'starting':
-			prev_level = getLevel($data.users[$data.id].data.score);
+			prev_level = $data.users[$data.id].level;
 			loading(L['gameLoading']);
 			break;
 		case 'roundReady':
@@ -970,6 +1010,7 @@ function onMessage(data){
 			$('#ct.product-title').html(data.q >= 0.01 && dd == data.i ? '<i class="fa fa-comment"></i>채팅  |  <i class="fa fa-clock-o"></i>슬로우 모드 적용 중 / ' + String(data.q) + '초' : '<i class="fa fa-comment"></i>채팅');
 			break;
 		case 'blackalert':
+			noReconn = true;
 			setTimeout(pfJeje(data.reason, data.when), 300);
 			break;
 		case 'nikc':
@@ -1003,6 +1044,10 @@ function onMessage(data){
 			startTyping(data.id);
 			break;
 		case 'rank':
+			if(data.ranktype == 'redis') Ranking(data.data, data);
+			if(data.ranktype == 'weekly') Weekly(data.data, data);
+			break;
+		case 'rankData':
 			Ranking(data.data, data);
 			break;
 		case 'killroom':
@@ -1017,14 +1062,17 @@ function onMessage(data){
 			clearAllChat();
 			break;
 		case 'alert':
-			if(data.code) alert(L['error_' + data.code]);
+			if(data.code){
+				if(Number(data.code) == 999 || Number(data.code) == 402) noReconn = true;
+				alert(L['error_' + data.code]);
+			}
 			break;
-		case 'ping':
+		/*case 'ping':
 			var oq = new Date();
 			var ww = window.performance ? window.performance.now() : oq.getTime();
 			ping = Math.round(ww - pinglast);
 			updateRoomList();
-			break;
+			break;*/
 		case 'equip':
 			if(data.error) return fail(data.error);
 			$data.box = data.box;
@@ -1038,6 +1086,10 @@ function onMessage(data){
 		case 'box':
 			if(data.error) return fail(data.error);
 			$data.box = data.box;
+			if($data._iSel){
+				renderiSel();
+				$data._iSel = false;
+			}
 			drawMyDress();
 			break;
 		case 'cfV':
@@ -1075,25 +1127,17 @@ function onMessage(data){
 			});
 			$cost.html(L['cfCost'] + ": " + data.cost + L['ping']);
 			break;
-		/*case 'evtStat':
-			data.evtKey = Number(data.evtKey) || 0;
-			var looping = 0;
-			while(max_g[looping] < data.evtKey && looping < 3){
-				looping++;
-			}
-			var gss = !!data.evtKey ? data.evtKey / max_g[looping] * 100 : 0;
+		case 'evtStat2':
+			var key = Number(data.evtKey) || 0;
+			var gss = (data.evtKey / 20210111) * 100;
 			if(gss > 100) gss = 100;
+			var rst = '';
 			gss = gss.toFixed(2);
-			if(!data.evtKey && data.evtKey < 0){
-				var su = max_g[looping];
-			}else if(data.evtKey >= max_g[looping]){
+			if(key >= 20210111){
 				rst = '<br><font color="blue">완료!</font>';
-				var su = data.evtKey;
-			}else{
-				rst = '';
-				var su = data.evtKey;
-			}
-			peAlert('<b>광복절 태극기 모으기</b>\n\n<b>' + (looping+1) + '단계\n</b>' + commify(su) + ' / ' + max_g[looping] + ' [' + gss + '%]' + rst);*/
+			}else rst = ' <button style="float: none !important;" onclick="getevtKey()" class="fa fa-refresh"></button>';
+			pfAlert('<b>20210111점을 획득하여라!</b><br><br>' + commify(key) + ' / 20,210,111 [' + gss + '%]' + rst);
+			break;
 		case 'cns':
 			if(data.exp) notice(L['obtainExp'] + ": " + commify(data.exp));
 			if(data.money) notice(L['obtainMoney'] + ": " + commify(data.money));
@@ -1137,6 +1181,9 @@ function onMessage(data){
 			if(data.post) window.post = data.post;
 			if(data.kkutu) $data.users[$data.id].data = data.kkutu;
 			if(data.money) $data.users[$data.id].money = data.money;
+			if(data.score) $data.users[$data.id].score = data.score;
+			if(data.level) $data.users[$data.id].level = data.level;
+			if(data.goal) $data.users[$data.id].goal = data.goal;
 			updateMe();
 			renderPost();
 			break;
@@ -1144,11 +1191,30 @@ function onMessage(data){
 			$("#stat-exp").val(Number(data.exp) || 0);
 			$("#stat-mny").val(Number(data.mny) || 0);
 			$("#stat-point").val(Number(data.remain) || 0);
-			$("#eff-exp").val(data.exp ? Number((data.exp * 0.05).toFixed(2)) : 0);
+			$("#eff-exp").val(data.exp ? Number((data.exp * 0.1).toFixed(2)) : 0);
 			$("#eff-mny").val(data.mny ? Number((data.mny * 0.05).toFixed(2)) : 0);
 			break;
 		case 'hwak':
 			if(!$data.opts.hw) hwak(data.value, data.sender);
+			break;
+		case 'acv':
+			playSound('success');
+			notice("<b>"+L['acv_'+data.acv]+"</b> 도전 과제가 완료되었습니다.");
+			break;
+		case 'levelup':
+			if(!$data.opts.bl && $data.friends[data.user]) notice("친구 " +$data.friends[data.user]+"님이 <font color='blue'>"+data.value+"레벨</font>을 달성하였습니다.", "레벨 업!");
+			break;
+		case 'jamsuExp':
+			if($data.opts.jb) notice(L['obtainExp'] + ": " + commify(data.value));
+			break;
+		case 'checkJamsu':
+			if($data.room) checkJamsu();
+			break;
+		case 'byeroom':
+			if($data.room && $data.room.id == data.id){
+				send('leave', { force: true });
+				notice('잠수로 인해 방에서 퇴장되었습니다.');
+			}
 			break;
 		default:
 			break;
@@ -1158,6 +1224,84 @@ function onMessage(data){
     function recaptchaCallback(response) {
         ws.send(JSON.stringify({type: 'recaptcha', token: response}));
     }
+}
+function renderiSel(){
+	var o, i;
+	var $v = $("#psel-in").empty();
+	for(i in $data.box){
+		o = new Option(iName(i), i);
+		$v.append(o);
+	}
+}
+function getAchievements(){
+	var Max = {}, acv = {}, i, v, $w;
+	$.get("/achievements", function(res){
+		var $v = $("#missions").empty();
+		if(res.retry){
+			notice('도전 과제를 불러오고 있습니다. 최초 로딩 시 시간이 다소 소요될 수 있습니다.');
+			send('acv',undefined,true);
+			_setTimeout(function(){getAchievements();}, 1000);
+			return;
+		}
+		/*	실력이 딸려서 어쩔 수 없이 주석을 단다 ㅠㅠ
+			res.data -> 리스트 형태로 들어온다.
+			Property:
+				_id 아이디
+				now 진행도
+				goal 목표치
+				type 종류
+				per 달성 회원 수 / 전체 회원 수
+				reward 보상
+		*/
+		for(i in res.data){
+			v = res.data[i];
+			if(!acv[v.type]) acv[v.type] = [v];
+			else acv[v.type].push(v);
+		}
+		//res.data.forEach(function(v){
+		for(i in acv){
+			acv[i].sort(function(a,b){return a.goal-b.goal});
+			for(var j=0; j<acv[i].length; j++){
+				v = acv[i][j];
+				if(!v.now) v.now = 0;
+				if(Max[v.type]) continue;
+				if(v.now >= v.goal) continue;
+				Max[v.type] = true;
+				$v.append(achievementItem(v))
+				  .append($("<div>").css({height:'7.5px',width:'100%'}));
+				$w = $("#acv-"+v._id);
+				$w.append($("<div>").addClass("expl").html("달성률: "+(v.per*100).toFixed(2)+"%"));
+				global.expl($w);
+			}
+		}
+		for(i in acv){
+			for(var j=0; j<acv[i].length; j++){
+				v = acv[i][j];
+				if(!v.now) v.now = 0;
+				if(v.now < v.goal) continue;
+				v.now = v.goal;
+				$v.append(achievementItem(v))
+				  .append($("<div>").css({height:'7.5px',width:'100%'}));
+				$w = $("#acv-"+v._id);
+				$w.append($("<div>").addClass("expl").html("달성률: "+(v.per*100).toFixed(2)+"%"));
+				global.expl($w);
+			}
+		}
+		//});
+	});
+}
+function achievementItem(data){
+	var $w;
+	$w = $("<div>").attr('id', "acv-"+data._id).addClass("mission")
+		.append($("<div>").addClass("acv-name").html(L['acv_'+data._id] || '이름을 받아올 수 없습니다.'))
+		.append($("<div>")
+			.append($("<div>").addClass("acvGraph acv-gauge")
+				.append($("<div>").addClass("acv-bar").width(Number(data.now)/Number(data.goal)*160))
+			)
+		)
+		.append($("<div>").addClass("acv-explain acv2").html(L['acv_'+data._id+'X'] || '설명을 찾을 수 없습니다.'))
+		.append($("<div>").addClass("acv-now acv2").html(data.now + " / " + data.goal));
+	return $w;
 }
 function renderCTI(rw){
 	var A = '<img src="'+ cdn + '/img/exp.png" style="width: 13px; height: 13px;"> 경험치';
@@ -1212,13 +1356,12 @@ function renderPost(){
 		}
 	}
 	$("#PostDiag .dialog-title").html("우편함 (경험치: "+ALL.exp+", 핑: "+ALL.mny+")");
-	//$("#PostDiag .dialog-title").html("우편함" + ((ALL.exp || ALL.mny) ? ((ALL.exp?(" (경험치: " + ALL.exp):'' + (ALL.mny?", 핑: " + ALL.mny+')':')')) : ''))
 }
 function receiveItem(a){
 	send('receiveItem', { id: a.id.slice(8) }, true);
 }
 function getevtKey(){
-	send('event');
+	send('event',undefined,true);
 }
 function clearAllChat(){
 	$("#chat-log-board").empty();
@@ -1234,9 +1377,10 @@ _setInterval(function(){
 			_setTimeout(function(){ send('refresh', undefined, true); }, 1500);
 		}
 		send('refresh');
+		if($stage.dialog.acv.is(":visible")) getAchievements();
 	}
 }, 8000);
-_setInterval(function(){
+/*_setInterval(function(){
 	if(isWelcome){
 		if(!$data.room){
 			send('ping');
@@ -1244,7 +1388,7 @@ _setInterval(function(){
 			pinglast = window.performance ? window.performance.now() : onq.getTime();
 		}
 	}
-}, 10000);
+}, 10000);*/
 /*_setInterval(function(){
 	if(isWelcome){
 		if(!$data.room){
@@ -1252,8 +1396,12 @@ _setInterval(function(){
 		}
 	}
 }, 15000)*/
-_setInterval(function(){
+var sType = _setInterval(function(){
 	applyTyping();
+	if($data._lsRemain<=0){
+		applyTyping();
+		clearInterval(sType);
+	}
 }, 222);
 function applyTyping(){
 	var tp = "";
@@ -1423,6 +1571,9 @@ function welcome(){
 	if(!svAvail){
 		svAvail = true;
 		notice('자동 재연결 되었습니다.');
+		$data.room = undefined;
+		$data.place = 0;
+		$data._gaming = false;
 		$stage.dialog.pAlert.hide();
 	}
 	if(!didCaptcha) $data.bgm = playBGM($data.opts.bg, true);
@@ -1439,13 +1590,9 @@ function welcome(){
 	if($data.admin) console.log("관리자 모드");
 }
 function getKickText(profile, vote){
-	var vv = L['causeMaster'];
-	if(vote.Y >= vote.N){
-		var nicknm = $data.users[profile.id].nickname;
-		vv += nicknm + L['kicked'];
-	}else{
-		vv += nicknm + L['kickDenied'];
-	}
+	var vv = vote.byAdmin ? '운영자에 의해 ' : L['causeMaster'];
+	var nicknm = $data.users[profile.id].nickname;
+	vv += nicknm + L['kicked'];
 	return vv;
 }
 function runCommand(cmd){
@@ -1461,7 +1608,8 @@ function runCommand(cmd){
 		'/무시': L['cmd_wb'],
 		'/차단': L['cmd_shut'],
 		'/id': L['cmd_id'],
-		'/필터링': L['cmd_filtering']
+		'/필터링': L['cmd_filtering'],
+		'/ㅊㅊ': '(/ㅊㅊ, /친추, /cc <i>대상</i>) 대상에게 친구 추가 요청을 보냅니다.'
 	};
 	
 	switch(cmd[0].toLowerCase()){
@@ -1542,6 +1690,22 @@ function runCommand(cmd){
 			notice(spt.bw ? '욕설/비속어 필터링 기능을 껐습니다.' : '욕설/비속어 필터링 기능을 켰습니다.')
 			spt.bw = spt.bw ? false : true;
 			applyOptions(spt);
+			break;
+		case "/친추":
+		case "/ㅊㅊ":
+		case "/cc":
+			var temp, i;
+			cmd[1] = cmd.slice(1).join(' ');
+			for(i in $data.users){
+				if((temp = $data.users[i].nickname) == cmd[1]){
+					if(i == $data.id) return notice("자신에게는 친구 추가 요청을 보낼 수 없습니다.");
+					if($data.friends[i]) return notice("이미 나와 친구인 회원입니다.");
+					send('friendAdd', { target: i });
+					notice(temp + "님에게 친구 추가 요청을 보냈습니다.");
+					return;
+				}
+			}
+			notice("접속 중이 아니거나 없는 회원입니다. 닉네임을 확인 해 주세요.");
 			break;
 		default:
 			for(i in CMD) notice(CMD[i], i);
@@ -1746,9 +1910,11 @@ function updateUI(myRoom, refresh){
 		if($data._shop || $data._exchange){
 			$stage.box.roomList.hide();
 			$stage.box.shop.show();
+			//if($data._exchange) $stage.box.shop.show();
 		}else{
 			$stage.box.roomList.show();
 			$stage.box.shop.hide();
+			$stage.box.exchange.hide();
 		}
 		updateUserList(refresh || only != $data._only);
 		updateRoomList(refresh || only != $data._only);
@@ -1774,6 +1940,7 @@ function updateUI(myRoom, refresh){
 		}
 		$data._shop = false;
 		$data._exchange = false;
+		$data._exchange = false;
 		$stage.box.room.show().height(360);
 		if(only == "for-master") if($stage.dialog.inviteList.is(':visible')) updateUserList();
 		updateRoom(false);
@@ -1785,6 +1952,7 @@ function updateUI(myRoom, refresh){
 		}
 		$data._shop = false;
 		$data._exchange = false;
+		$data._trade = false;
 		$data._ar_first = true;
 		$stage.box.me.hide();
 		$stage.box.game.show();
@@ -1794,6 +1962,9 @@ function updateUI(myRoom, refresh){
 	}
 	$data._only = only;
 	setLocation($data.place);
+	if($data.users[$data.id].equip["STY"]==="b1_gm"){
+		$(".kkutu-menu .for-gm").show();
+	}
 	$(".kkutu-menu ."+only).show();
 }
 function animModified(cls){
@@ -1852,16 +2023,15 @@ function updateMe(){
 		var my = $data.users[$data.id];
 		//var isAdmin = $data.admin;
 		var i, gw = 0;
-		var lv = getLevel(my.data.score);
-		var prev = EXP[lv-2] || 0;
-		var goal = EXP[lv-1];
-		var gg = my.data.score < 0;
+		var lv = my.level;
+		var goal = my.goal;
+		var gg = my.level < 0;
 		
 		for(i in my.data.record) gw += my.data.record[i][1];
 		renderMoremi(".my-image", my.equip);
 		renderAccountMoremi(my.equip);
 		// $(".my-image").css('background-image', "url('"+my.profile.image+"')");
-		$(".my-stat-level").replaceWith(getLevelImage(my.data.score, my.equip).addClass("my-stat-level"));
+		$(".my-stat-level").replaceWith(getLevelImage(my.level, my.equip, my.bot).addClass("my-stat-level"));
 		if(my.nickname != undefined && my.nickname != null) var prenick = my.nickname.replace(/\s/g, "")
 		else var prenick = my.nickname;
 		if(prenick == undefined || prenick == null || prenick == ""){
@@ -1872,8 +2042,8 @@ function updateMe(){
 		}
 
 		var j = 0;
-		var jl = my.data.score < 0;
-		j = (my.data.score-prev)/(goal-prev);
+		var jl = my.level < 0;
+		j = (my.score)/(my.goal);
 		$(".my-stat-name").html(my.nickname);
 		$(".my-stat-record").html(L['globalWin'] + " " + gw + L['W']);
 		$(".my-stat-ping").html(commify(my.money) + L['ping']);
@@ -1883,7 +2053,7 @@ function updateMe(){
 		//$(".my-gauge .lvgraph-bar").width(j * 190);
 		if(!blockGauge){
 			try{
-				var aq = getLevel(my.data.score);
+				var aq = my.level;
 				if(prev_level) aq = aq - prev_level;
 				if(prev_level){
 					for(var i=0; i<aq; i++){
@@ -1894,30 +2064,29 @@ function updateMe(){
 						else $(".my-gauge .lvgraph-bar").animate({ width: 0 }, 400/aq-i);
 					}
 				}
-				prev_level = getLevel(my.data.score);
+				prev_level = my.level;
 				$(".my-gauge .lvgraph-bar").animate({ width: j * 190}, 600);
 			}catch(e){
-				prev_level = getLevel(my.data.score);
+				prev_level = my.level;
 				$(".my-gauge .lvgraph-bar").animate({ width: j * 190}, 600);
 			}
 		}
 		
-		var gls = (my.data.score-prev)/(goal-prev) * 100;
+		var gls = my.score/my.goal * 100;
 		gls = gls.toFixed(2);
-		$(".my-gauge-text").html(!$data.opts.rq ? commify(my.data.score) + " / " + commify(goal) : commify(my.data.score-prev) + " / " + commify(goal-prev))
+		$(".my-gauge-text").html(/* !$data.opts.rq ? commify(my.data.score) + " / " + commify(goal) : */commify(my.score) + " / " + commify(my.goal))
 		$(".my-gauge-per").html(gls + "%");
 		//$exl = $(".my-gauge");
-		if($(".my-gauge-text").html().length >= 32) $(".my-gauge-text").html(commify(!$data.opts.rq?my.data.score:my.data.score-prev));
+		if($(".my-gauge-text").html().length >= 32) $(".my-gauge-text").html(commify(my.score));
 		$ext = $(".my-gauge-per");
 		//$exl.append($("<div>").addClass("expl").html(!$data.opts.rq ? commify(my.data.score) + " / " + commify(EXP[MAX_LEVEL-2]) : commify(my.data.score-prev) + " / " + commify(goal-prev)));
-		$ext.append($("<div>").addClass("expl").html(!$data.opts.rq ? commify(my.data.score) + " / " + commify(goal) : commify(my.data.score-prev) + " / " + commify(goal-prev)));
+		$ext.append($("<div>").addClass("expl").html(/* !$data.opts.rq ? commify(my.data.score) + " / " + commify(goal) : */commify(my.score) + " / " + commify(my.goal)));
 		
 		//global.expl($exl);
 		global.expl($ext, true);
 	}catch(e){
 		//console.log(e.toString());
 	}
-	
 }
 function prettyTime(time){
 	var min = Math.floor(time / 60000) % 60, sec = Math.floor(time * 0.001) % 60;
@@ -1941,7 +2110,7 @@ function updateUserList(refresh){
 		len++;
 		arr.push($data.users[i]);
 	}
-	if($data.opts.su) arr.sort(function(a, b){ return b.data.score - a.data.score; });
+	if($data.opts.su) arr.sort(function(a, b){ return b.level - a.level; });
 	else if($data.opts.nu) arr.sort(function(a, b){ if(a.nickname > b.nickname) return 1; if(b.nickname > a.nickname) return -1; return 0; });
 	refresh = true;
 	$stage.lobby.userListTitle.html("<i class='fa fa-users'></i>"
@@ -1971,7 +2140,7 @@ function onLUsB(o){
 	var $R;
 	$R = $("<div>").attr('id', "invite-item-"+o.id).addClass("invite-item users-item")
 	// .append($("<div>").addClass("jt-image users-image").css('background-image', "url('"+o.profile.image+"')"))
-	.append(getLevelImage(o.data.score, o.equip).addClass("users-level"))
+	.append(getLevelImage(o.level, o.equip, o.bot).addClass("users-level"))
 	// .append($("<div>").addClass("jt-image users-from").css('background-image', "url('/img/kkutu/"+o.profile.type+".png')"))
 	.append($("<div>").addClass("users-name").html(o.nickname))
 	
@@ -1985,7 +2154,7 @@ function userListBar(o, forInvite){
 	if(forInvite){
 		$R = $("<div>").attr('id', "invite-item-"+o.id).addClass("invite-item users-item")
 		// .append($("<div>").addClass("jt-image users-image").css('background-image', "url('"+o.profile.image+"')"))
-		.append(getLevelImage(o.data.score, o.equip).addClass("users-level"))
+		.append(getLevelImage(o.level, o.equip, o.bot).addClass("users-level"))
 		// .append($("<div>").addClass("jt-image users-from").css('background-image', "url('/img/kkutu/"+o.profile.type+".png')"))
 		.append($("<div>").addClass("users-name").html(o.nickname))
 		.on('click', function(e){
@@ -1994,7 +2163,7 @@ function userListBar(o, forInvite){
 	}else{
 		$R = $("<div>").attr('id', "users-item-"+o.id).addClass("users-item")
 		// .append($("<div>").addClass("jt-image users-image").css('background-image', "url('"+o.profile.image+"')"))
-		.append(getLevelImage(o.data.score, o.equip).addClass("users-level"))
+		.append(getLevelImage(o.level, o.equip, o.bot).addClass("users-level"))
 		// .append($("<div>").addClass("jt-image users-from").css('background-image', "url('/img/kkutu/"+o.profile.type+".png')"))
 		.append($("<div>").addClass("users-name ellipse").html(o.nickname))
 		.on('click', function(e){
@@ -2006,24 +2175,29 @@ function userListBar(o, forInvite){
 	return $R;
 }
 function addonNickname($R, o, s){
+	var equip = o.equip;
+	var bd = equip["BDG"];
+	var st = equip["STY"];
+	var ni = equip["NIK"];
 	if(s){
 		$R.addClass("x-spectate");
 	} else {
-		if(o.equip['NIK']) $R.addClass("x-" + o.equip['NIK']);
-		if(o.equip['STY'] == "b1_um" || o.equip['STY'] == "b1_gm" || o.equip['STY'] == "b1_ds" || o.equip['STY'] == "b1_wd"){
-			if(o.equip['STY'] == "b1_gm") $R.addClass("x-gm");
-			if(o.equip['STY'] == "b1_ds") $R.addClass("x-ds");
-			if(o.equip['STY'] == "b1_um") $R.addClass("x-um");
-			if(o.equip['STY'] == "b1_wd") $R.addClass("x-wd");
+		if(ni) $R.addClass("x-" + ni);
+		if(st == "b1_um" || st == "b1_gm" || st == "b1_ds" || st == "b1_wd"){
+			if(st == "b1_gm") $R.addClass("x-gm");
+			if(st == "b1_ds") $R.addClass("x-ds");
+			if(st == "b1_um") $R.addClass("x-um");
+			if(st == "b1_wd") $R.addClass("x-wd");
+			if(bd == "b1_uny") $R.removeClass("x-gm").addClass("x-rgm");
 		}else{
-			if(o.equip['BDG'] == "b1_manlep") $R.addClass("x-ms");
-			if(o.equip['BDG'] == "b1_master") $R.addClass("x-mt");
-			if(o.equip['BDG'] == "b1_lv500") $R.addClass("x-500");
-			if(o.equip['BDG'] == "b1_lv600") $R.addClass("x-600");
-			if(o.equip['BDG'] == "b1_lv750") $R.addClass("x-750");
-			if(o.equip['BDG'] == "b1_lv360") $R.addClass("x-360");
-			if(o.equip['BDG'] == "b1_lv100") $R.addClass("x-100");
-			if(o.equip['BDG'] == "b1_lv200") $R.addClass("x-200");
+			if(bd == "b1_manlep") $R.addClass("x-ms");
+			if(bd == "b1_master") $R.addClass("x-mt");
+			if(bd == "b1_lv500") $R.addClass("x-500");
+			if(bd == "b1_lv600") $R.addClass("x-600");
+			if(bd == "b1_lv750") $R.addClass("x-750");
+			if(bd == "b1_lv360") $R.addClass("x-360");
+			if(bd == "b1_lv100") $R.addClass("x-100");
+			if(bd == "b1_lv200") $R.addClass("x-200");
 		}
 	}
 	$R.addClass("ellipse");
@@ -2049,7 +2223,7 @@ function updateRoomList(refresh){
 			len++;
 		}
 	}
-	$stage.lobby.roomListTitle.html(L['RoomList'].replace("FA{bars}", "<i class='fa fa-bars'></i>") + " [" + len + L['GAE'] + "]<font style='float: right; margin-right: 5px;'><b>" + (ping < 0 ? "-" : ping) + " ms　</b><i class='margC " + getStatus(ping) + "Circle'/></b></font>");
+	$stage.lobby.roomListTitle.html(L['RoomList'].replace("FA{bars}", "<i class='fa fa-bars'></i>") + " [" + len + L['GAE'] + "]");
 	if(len){
 		$(".rooms-gaming").css('display', $data.opts.ow ? "none" : "");
 		$(".rooms-locked").css('display', $data.opts.ou ? "none" : "");
@@ -2110,8 +2284,9 @@ function roomListBar(o){
 		.append($("<div>").addClass("rooms-limit").html(o.players.length + " / " + o.limit))
 		.append($("<div>").width(mobile ? 220 : 270)
 			.append($("<div>").addClass("rooms-mode").html(opts.join(" / ").toString()))
-			.append($("<div>").addClass("rooms-round").html(md=='TAK'?'':L['rounds'] + " " + o.round))
+			.append($("<div>").addClass("rooms-round").html(md=='TAK'?'':L['rounds'] + " " + toRound(o)))
 			.append($("<div>").addClass("rooms-time").html(md=='TAK'?'':o.time + L['SECOND']))
+			.append($("<div>").addClass("rooms-speed").html(md=='TAK'?'':'속도 x'+o.gameSpeed.toFixed(1)))
 		)
 		.append($("<div>").addClass("rooms-lock").html(o.password ? "<i class='fa fa-lock'></i>" : "<i class='fa fa-unlock'></i>"))
 		.on('click', function(e){
@@ -2133,14 +2308,18 @@ function roomListBar(o){
 	}catch(e){}
 	return $R || '<span></span>';
 }
+function toRound(o){
+	if(o.game && o.gaming && o.game.round) return o.game.round + " / "+ o.round;
+	else return o.round;
+}
 function normalGameUserBar(o){
 	var $m, $n, $bar;
-	var lvs = getLevel(o.data.score);
+	var lvs = o.level;
 	var gg = lvs > 1000;
 	var $R = $("<div>").attr('id', "game-user-"+o.id).addClass("game-user")
 		.append($m = $("<div>").addClass("moremi game-user-image"))
 		.append($("<div>").addClass("game-user-title")
-			.append(getLevelImage(o.data.score, o.equip).addClass("game-user-level"))
+			.append(getLevelImage(o.level, o.equip, o.bot).addClass("game-user-level"))
 			.append($bar = $("<div>").addClass("game-user-name ellipse").html(o.nickname))
 			.append($("<div>").addClass("expl").html(L['LEVEL'] + " " + lvs))
 		)
@@ -2156,7 +2335,7 @@ function miniGameUserBar(o){
 	var $n, $bar;
 	var $R = $("<div>").attr('id', "game-user-"+o.id).addClass("game-user")
 		.append($("<div>").addClass("game-user-title")
-			.append(getLevelImage(o.data.score, o.equip).addClass("game-user-level"))
+			.append(getLevelImage(o.level, o.equip, o.bot).addClass("game-user-level"))
 			.append($bar = $("<div>").addClass("game-user-name ellipse").html(o.nickname))
 		)
 		.append($n = $("<div>").addClass("game-user-score"));
@@ -2226,7 +2405,7 @@ function updateRoom(gaming, nickData){
 			var prac = o.game.practice ? ('/' + L['stat_practice']) : '';
 			var spec = (o.game.form == "S") ? ('/' + L['stat_spectate']) : false;
 			if(o.robot){
-				o.profile = getAIProfile(o.level);
+				o.profile = getAIProfile(o.aiLevel);
 				o.nickname = o.profile.title;
 				$data.robots[o.id] = o;
 			}
@@ -2244,7 +2423,7 @@ function updateRoom(gaming, nickData){
 				)
 				//.css($data.opts.th == "dark" ? { 'box-shadow': '0px 1px 1px #363636', 'background-color': '#303030' } : { 'box-shadow': '0px 1px 1px #777777', 'background-color': '#E4E4E4' })
 				.append($("<div>").addClass("room-user-title")
-					.append(getLevelImage(o.data.score, o.equip).addClass("room-user-level"))
+					.append(getLevelImage(o.level, o.equip, o.bot).addClass("room-user-level"))
 					.append($bar = $("<div>").addClass("room-user-name").html(o.nickname))
 				).on('click', function(e){
 					requestProfile($(e.currentTarget).attr('id').slice(10));
@@ -2428,7 +2607,7 @@ function renderGoods($target, preId, filter, equip, onClick, lang, word){
 			value: q
 		};
 		//if(g == 'EVT') continue;
-		if(!q.hasOwnProperty("value") && !equipped) continue;
+		if(!q || !q.hasOwnProperty("value") && !equipped) continue;
 		if(!isAll) if(filter.indexOf(obj.group) == -1) continue;
 		$target.append($item = $("<div>").addClass("dress-item")
 			.append(getImage(obj.image).addClass("dress-item-image").html("x" + q.value))
@@ -2443,13 +2622,14 @@ function getMoney(cost, gid){
 	if(gid.charAt() == "$"){
 		switch(gid.slice(0, 4)){
 			case "$WPC":
-				return 5;
+				return 300;
 			case "$WPB":
-				return 30;
+				return 500;
 			case "$WPA":
-				return 50;
+				return 1000;
 		}
-	}else return Math.round((cost || 0) * 0.2);
+	}else if(gid == 'exp100') return 0;
+	else return Math.round((cost || 0) * 0.075);
 }
 function drawMyGoods(avGroup){
 	var equip = $data.users[$data.id].equip || {};
@@ -2488,7 +2668,7 @@ function drawMyGoods(avGroup){
 		}else if(item.group == "CNS" && e.altKey && id == 'dictPage'){
 			//if(!confirm('정말 이 항목을 모두 사용합니까?')) return;
 			var k = $data.users[$data.id];
-			var j = k.data.score;
+			var j = k.level;
 			pfConfirm('정말 이 항목을 모두 사용합니까?', function(){send('cnsall', { id: id }, true);}, noFunc);
 			/*$.post("/cnsall/" + id, function(res){
 				if(res.exp) notice(L['obtainExp'] + ": " + commify(res.exp));
@@ -2524,9 +2704,26 @@ function drawMyGoods(avGroup){
 		}
 	});
 }
-function getPercent(prev, level){
-	if(level < 0) return (prev * 100).toFixed(2);
-	return (prev * lis[level]).toFixed(2);
+function CodyRoom(start){
+	if(start) send('codyRoom',undefined,true);
+	renderMoremi($("#cody-view"), $data.users[$data.id].equip);
+	if($("#cody-list")[0].length < 1){
+		CodyNew();
+	}
+}
+function CodyNew(equip){
+	send('codyNew',undefined, true);
+}
+function CodyEdit(equip){
+}
+function getPercent(prev, level, useVar){
+	if(useVar){
+		if(level < 0) return (prev * 100).toFixed(2);
+		return (prev * useVar[level]).toFixed(2);
+	}else{
+		if(level < 0) return (prev * 100).toFixed(2);
+		return (prev * lis[level]).toFixed(2);
+	}
 }
 function getCost(level, sc){
 	var sa;
@@ -2535,7 +2732,8 @@ function getCost(level, sc){
 	return Math.floor(sa / 2.25);
 }
 function showEnhance(item){
-	$.get("/enhance/" + item, function(res){
+	$.get("/enhance2/" + item, function(res){
+		if(res.max) return pfAlert('더 이상 강화할 수 없습니다.');
 		if(res.error) return fail(res.error);
 		else{
 			var ui = iGoods(item).options;
@@ -2545,17 +2743,17 @@ function showEnhance(item){
 				if(ui.hasOwnProperty('gEXP')) mode = 1;
 				else if(ui.hasOwnProperty('gMNY')) mode = 2;
 			}
-			if(res.lv >= 10) return pfAlert('더 이상 강화할 수 없습니다.');
+			if(res.lv >= 20 || res.lv>=10&&mode==2) return pfAlert('더 이상 강화할 수 없습니다.');
 			if(mode){
 				if(mode == 1){
-					next = '획득 경험치: +' + getPercent(ui["gEXP"], res.lv - 1) + '%p → +' + getPercent(ui["gEXP"], res.lv) + '%p';
+					next = '획득 경험치: +' + getPercent(ui["gEXP"], res.lv - 1, res.hyogwa) + '%p → +' + getPercent(ui["gEXP"], res.lv, res.hyogwa) + '%p';
 					sc = ui["gEXP"];
 				}else{
-					next = '획득 핑: +' + getPercent(ui["gMNY"], res.lv - 1) + '%p → +' + getPercent(ui["gMNY"], res.lv) + '%p';
+					next = '획득 핑: +' + getPercent(ui["gMNY"], res.lv - 1, res.hyogwa) + '%p → +' + getPercent(ui["gMNY"], res.lv, res.hyogwa) + '%p';
 					sc = ui["gMNY"];
 				}
 			}
-			en_info.per = res.per[res.lv].toFixed(2);
+			en_info.per = res.per[res.lv].toFixed(1);
 			en_info.item = item;
 			en_info.ping = res.cost;
 			$("#en-name").html(iName(item));
@@ -2564,8 +2762,10 @@ function showEnhance(item){
 			$("#en-image").css('background-image', "url(" + iImage(item) + ")");
 			$("#en-percent").html((res.per ? res.per[res.lv] : per[res.lv]).toFixed(1) + "%");
 			$("#en-after").html(next);
+			$("#en-crash").html(res.hasOwnProperty('crash') ? '<font'+(res.crash>0?' color="red"':'')+'>'+res.crash.toFixed(1)+'%'+'</font>' : '알 수 없음')
+			$("#en-fail").html((100-en_info.per).toFixed(1)+"%");
 			$("#en-cost").html(res.cost + '핑');
-			showDialog($stage.dialog.enhance);
+			showDialog($stage.dialog.enhance,true);
 		}
 	});
 }
@@ -2710,20 +2910,22 @@ function process(num, wd){
 	return String(Number(num)) + wd;
 }
 function convert(num){
-	if(num >= 10000 && num <= 99999999) return Math.floor(num/10000)+'만 ' + process(String(num).slice(-4))
-	if(num >= 100000000 && num <= 999999999999) return Math.floor(num/100000000)+'억 '+process(String(num).slice(-8,-4),'만');
-	if(num >= 1000000000000 && num <= 9999999999999999) return Math.floor(num/1000000000000)+'조 ' + process(String(num).slice(-12,-8), '억');
-	if(num >= 10000000000000000 && num <= 99999999999999999999) return Math.floor(num/10000000000000000)+'경';
-	if(num >= 100000000000000000000 && num <= 999999999999999999999999) return Math.floor(num/100000000000000000000)+'해';
-	return num;
+	var temp = num;
+	if(num >= 10000 && num <= 99999999) temp = Math.floor(num/10000)+'만 ' + process(String(num).slice(-4))
+	if(num >= 100000000 && num <= 999999999999) temp = Math.floor(num/100000000)+'억 '+process(String(num).slice(-8,-4),'만');
+	if(num >= 1000000000000 && num <= 9999999999999999) temp = Math.floor(num/1000000000000)+'조 ' + process(String(num).slice(-12,-8), '억');
+	if(num >= 10000000000000000 && num <= 99999999999999999999) temp = Math.floor(num/10000000000000000)+'경';
+	if(num >= 100000000000000000000 && num <= 999999999999999999999999) temp = Math.floor(num/100000000000000000000)+'해';
+	return String(temp).trim();
 }
 function Ranking(data, res){
+	//return notice('랭킹 시스템이 개편 중에 있습니다.');
 	var $board = $stage.dialog.lbTable.empty();
-	var fr = data.data[0] ? data.data[0].rank : 0;
+	var fr = data[0] ? data[0].rank : 0;
 	var page = (data.page || Math.floor(fr / 15)) + 1;
-	showDialog($stage.dialog.leaderboard, true);
-	data.data.forEach(function(item, index){
-		if(res.list[index] == null) var jas = true;
+	//showDialog($stage.dialog.leaderboard, true);
+	data.forEach(function(item, index){
+		/*if(res.list[index] == null) var jas = true;
 		else var jas = false;
 		if(!jas) var jk = res.list[index].prev;
 		else var jk = 0;
@@ -2734,20 +2936,23 @@ function Ranking(data, res){
 		else if(jk < 0) jk = '<b><font color="blue">▼ ' + (jk * -1) + '</font></b>';
 		if(!jas) var profile = res.list[index].nick;
 		else var profile = null;
-		if(profile == null || profile == undefined) profile = L['hidden'];
-		else if(profile.replace(/\s/g, '') == '') profile = L['hidden'];
+		if(item.nick == null || profile == undefined) profile = L['hidden'];
+		else if(profile.replace(/\s/g, '') == '') profile = L['hidden'];*/
 		item.score = Number(item.score);
-		var lvs = getLevel(item.score);
+		var lvs = item.level;
+		//var prev = EXP[lvs - 2] || 0;
+		//var goal = EXP[lvs - 1];
+		//var per = ((item.score-prev)/(goal-prev)*100).toFixed(2)+'%';
 		if(String($data.id) == String(item.id)){
 			$board.append($("<tr>").attr('id', "ranking-" + item.id)
 				.addClass("ranking-" + (item.rank + 1))
 				.addClass("ranking-me")
 				.append($("<td>").html(item.rank + 1))
 				.append($("<td>")
-					.append(getLevelImage(item.score).addClass("ranking-image"))
+					.append(getLevelImage(item.level).addClass("ranking-image"))
 					.append($("<label>").css('padding-top', 2).html(lvs))
 				)
-				.append($("<td>").html(profile))
+				.append($("<td>").html(item.nick))
 				.append($("<td>").html(convert(item.score)))
 				//.append($("<td>").html(jk))
 			);
@@ -2756,10 +2961,10 @@ function Ranking(data, res){
 				.addClass("ranking-" + (item.rank + 1))
 				.append($("<td>").html(item.rank + 1))
 				.append($("<td>")
-					.append(getLevelImage(item.score).addClass("ranking-image"))
+					.append(getLevelImage(item.level).addClass("ranking-image"))
 					.append($("<label>").css('padding-top', 2).html(lvs))
 				)
-				.append($("<td>").html(profile))
+				.append($("<td>").html(item.nick))
 				.append($("<td>").html(convert(item.score)))
 				//.append($("<td>").html(jk))
 			);
@@ -2767,13 +2972,13 @@ function Ranking(data, res){
 	});
 	$stage.dialog.lbPage.html(L['page'] + " " + page);
 	$stage.dialog.lbPrev.attr('disabled', page <= 1);
-	$stage.dialog.lbNext.attr('disabled', data.data.length < 15);
+	$stage.dialog.lbNext.attr('disabled', data.length < 15);
 	$stage.dialog.lbMe.attr('disabled', !!$data.guest);
 	$data._lbpage = page - 1;
 }
 function Myeong(data, res){
 	var $board = $stage.dialog.lbTable.empty();
-	showDialog($stage.dialog.leaderboard, true);
+	//showDialog($stage.dialog.leaderboard, true);
 	var fr = data.data[0] ? data.data[0].rank : 0;
 	var page = (data.page || Math.floor(fr / 15)) + 1;
 	data.data.forEach(function(item, index){
@@ -2824,6 +3029,53 @@ function Myeong(data, res){
 	$stage.dialog.lbNext.attr('disabled', data.data.length < 15);
 	$stage.dialog.lbMe.attr('disabled', !!$data.guest);
 	$data._lbpage = page - 1;
+}
+function Weekly(data, res){
+	var $board = $stage.dialog.mbTable.empty();
+	var fr = data.data[0] ? data.data[0].rank : 0;
+	var page = (data.page || Math.floor(fr / 15)) + 1;
+	showDialog($stage.dialog.myeongboard, true);
+	data.data.forEach(function(item, index){
+		if(res.list[index] == null) var jas = true;
+		else var jas = false;
+		if(!jas) var jk = res.list[index].prev;
+		else var jk = 0;
+		if(!jk) jk = 0;
+		else jk = jk - (item.rank + 1);
+		//if(jk == 0) jk = '-';
+		//else if(jk > 0) jk = '<b><font color="red">▲ ' + jk + '</font></b>';
+		//else if(jk < 0) jk = '<b><font color="blue">▼ ' + (jk * -1) + '</font></b>';
+		if(!jas) var profile = res.list[index].nick;
+		else var profile = null;
+		if(profile == null || profile == undefined) profile = L['hidden'];
+		else if(profile.replace(/\s/g, '') == '') profile = L['hidden'];
+		item.score = Number(item.score);
+		if(String($data.id) == String(item.id)){
+			$board.append($("<tr>").attr('id', "myeong-" + item.id)
+				.addClass("myeong-" + (item.rank + 1))
+				.addClass("myeong-me")
+				.append($("<td>").html(item.rank + 1))
+				.append($("<td>").html(profile))
+				.append($("<td>").html(convert(item.score)+'점'))
+				.height(20)
+				//.append($("<td>").html(jk))
+			);
+		}else{
+			$board.append($("<tr>").attr('id', "myeong-" + item.id)
+				.addClass("myeong-" + (item.rank + 1))
+				.append($("<td>").html(item.rank + 1))
+				.append($("<td>").html(profile))
+				.append($("<td>").html(convert(item.score)+'점'))
+				.height(20)
+				//.append($("<td>").html(jk))
+			);
+		}
+	});
+	$stage.dialog.mbPage.html(L['page'] + " " + page);
+	$stage.dialog.mbPrev.attr('disabled', page <= 1);
+	$stage.dialog.mbNext.attr('disabled', data.data.length < 15);
+	$stage.dialog.mbMe.attr('disabled', !!$data.guest);
+	$data._mbpage = page - 1;
 }
 function drawLeaderboard(data, typ, cod){
 	var $board = $stage.dialog.lbTable.empty();
@@ -3185,7 +3437,7 @@ function requestRoomInfo(id){
 			.append($("<div>").addClass("rip-form").html(L['pform_' + rd.f]))
 		);
 		if(p.id == o.master) $p.prepend($("<label>").addClass("rip-master").html("[" + L['master'] + "]&nbsp;"));
-		$p.prepend(getLevelImage(p.data.score, p.equip).addClass("profile-level rip-level"));
+		$p.prepend(getLevelImage(p.level, p.equip, p.bot).addClass("profile-level rip-level"));
 		
 		renderMoremi($moremi, p.equip);
 	});
@@ -3202,16 +3454,17 @@ function requestProfile(id){
 		notice(L['error_405']);
 		return;
 	}
-	var i = getLevel(o.data.score);
+	var i = o.level;
 	var gg = i > 1000 /* || o.equip["STY"] === "b1_gm"*/;
 	var ml = $data.opts.ml;
 	var rq = $data.opts.rq;
-	var prev = EXP[i - 2] || 0;
-	var goal = EXP[i - 1];
-	var gls = (o.data.score-prev)/(goal-prev) * 100;
+	var per = (o.score / o.goal * 100).toFixed(2);
+	//var prev = my.score;
+	//var goal = EXP[i - 1];
+	var gls = o.score/o.goal * 100;
 	var ss = gls;
 	ss = ss.toFixed(2);
-	var jl = o.data.score < 0;
+	var jl = o.score < 0;
 	$("#ProfileDiag .dialog-title").html(o.nickname + L['sProfile']);
 	$(".profile-head").empty().append($pi = $("<div>").addClass("moremi profile-moremi"))
 		.append($("<div>").addClass("profile-head-item")
@@ -3221,9 +3474,9 @@ function requestProfile(id){
 			)
 		)
 		.append($("<div>").addClass("profile-head-item")
-			.append(getLevelImage(o.data.score, o.equip).addClass("profile-level"))
+			.append(getLevelImage(o.level, o.equip, o.bot).addClass("profile-level"))
 			.append($("<div>").addClass("profile-level-text").html(L['LEVEL'] + " " + i))
-			.append($("<div>").addClass("profile-score-text").html(jl ? commify(o.data.score) + " / " + '0' + L['PTS'] + " [0.00%]" : ($data.opts.rq ? convert(o.data.score-prev) + " / " + convert(goal-prev) : convert(o.data.score) + " / " + convert(goal))+ L['PTS'] + " [" + ss + "%]"))
+			.append($("<div>").addClass("profile-score-text").html(convert(o.score) + " / " + convert(o.goal) + L['PTS'] + ' <font color="#969696">(' + per + '%)</font>'))
 		)
 		.append($ex = $("<div>").addClass("profile-head-item profile-exordial ellipse").text($data.opts.bw ? badWords(o.exordial || "") : o.exordial)
 			.append($("<div>").addClass("expl").css({ 'white-space': "normal", 'width': 300, 'font-size': "11px" }).text(o.exordial))
@@ -3235,35 +3488,35 @@ function requestProfile(id){
 	}else{
 		$stage.dialog.profileLevel.hide();
 		$("#profile-place").html(o.place ? (o.place + L['roomNumber']) : L['lobby']);
-		for(i in o.data.record){
-			var r = o.data.record[i];
-			var pc = r[1]
-			var pp = r[0]
-			if(pp != 0){
-				var pa = pc / pp;
-				var pct = pa * 100
-				var pcn = pct.toFixed(2);
-			} else {
-				var pcn = "0.00";
-			}
-			if(i == 'TAK') continue;
-			if(!mobile){
-				$rec.append($("<div>").addClass("profile-record-field")
-					.append($("<div>").addClass("profile-field-name").html(L['mode' + i]))
-					.append($("<div>").addClass("profile-field-record").html(r[0] + L['P'] + " " + r[1] + L['W']))
-					.append($("<div>").addClass("profile-field-recper").html(String(pcn) + '%'))
-					.append($("<div>").addClass("profile-field-score").html(convert(r[2])+L['PTS']))
-				);
-			}else{
-				$rec.append($("<div>").addClass("profile-record-field")
-					.append($("<div>").addClass("profile-field-name").addClass("ellipse").html(L['mode' + i]))
-					.append($("<div>").addClass("profile-field-recper").html(r[0] + L['P'] + " " + r[1] + L['W']))
-					.append($("<div>").addClass("profile-field-score").html(convert(r[2]) + L['PTS']))
-				);
-			}
-		}
-		renderMoremi($pi, o.equip);
 	}
+	for(i in o.data.record){
+		var r = o.data.record[i];
+		var pc = r[1]
+		var pp = r[0]
+		if(pp != 0){
+			var pa = pc / pp;
+			var pct = pa * 100
+			var pcn = pct.toFixed(2);
+		} else {
+			var pcn = "0.00";
+		}
+		if(i == 'TAK') continue;
+		if(!mobile){
+			$rec.append($("<div>").addClass("profile-record-field")
+				.append($("<div>").addClass("profile-field-name").html(L['mode' + i]))
+				.append($("<div>").addClass("profile-field-record").html(r[0] + L['P'] + " " + r[1] + L['W']))
+				.append($("<div>").addClass("profile-field-recper").html(String(pcn) + '%'))
+				.append($("<div>").addClass("profile-field-score").html(convert(r[2])+L['PTS']))
+			);
+		}else{
+			$rec.append($("<div>").addClass("profile-record-field")
+				.append($("<div>").addClass("profile-field-name").addClass("ellipse").html(L['mode' + i]))
+				.append($("<div>").addClass("profile-field-recper").html(r[0] + L['P'] + " " + r[1] + L['W']))
+				.append($("<div>").addClass("profile-field-score").html(convert(r[2]) + L['PTS']))
+			);
+		}
+	}
+	renderMoremi($pi, o.equip);
 	$data._profiled = id;
 	$stage.dialog.profileKick.hide();
 	$stage.dialog.profileShut.hide();
@@ -3279,7 +3532,7 @@ function requestProfile(id){
 		$stage.dialog.profileReport.show();
 	}
 	if($data.room){
-		if($data.id != id && $data.id == $data.room.master){
+		if(($data.id != id && $data.id == $data.room.master) || $data.users[$data.id].equip['STY']==='b1_gm'){
 			$stage.dialog.profileKick.show();
 			if(!o.robot) $stage.dialog.profileHandover.show();
 			$stage.dialog.profileShut.hide();
@@ -3303,7 +3556,7 @@ function requestInvite(id){
 	}else send('invite', { target: id });
 }
 function checkFailCombo(id){
-	if(!$data._replay && $data.lastFail == $data.id && $data.id == id){
+	if(!$data._replay && $data.lastFail == $data.id && $data.id == id && ($data.room && $data.room.gameSpeed <= 3)){
 		$data.failCombo++;
 		if($data.failCombo == 1) notice(L['trollWarning']);
 		if($data.failCombo > 1){
@@ -3346,7 +3599,7 @@ function gameReady(){
 	$stage.dialog.resultSave.attr('disabled', false);
 	clearBoard();
 	$stage.game.display.html(L['soon']);
-	playSound('game_start', false, $data.room.opts.faster, $data.room.opts.faster2);
+	playSound('game_start', false, $data.room.gameSpeed);
 	forkChat();
 	addTimeout(function(){
 		$stage.box.room.height(360).hide();
@@ -3557,7 +3810,7 @@ function startRecord(title){
 			o.id = u.id;
 			o.robot = true;
 			o.data = { score: 0 };
-			u = { profile: getAIProfile(u.level) };
+			u = { profile: getAIProfile(u.aiLevel) };
 			u.nickname = u.profile.title;
 		}else{
 			o.data = u.data;
@@ -3632,11 +3885,11 @@ function turnError(code, text){
 	$stage.game.display.empty().append($("<label>").addClass("game-fail-text")
 		.text((L['turnError_'+code] ? (L['turnError_'+code] + ": ") : "") + text)
 	);
-	playSound('fail');
+	playSound('fail', false, $data.room.gameSpeed);
 	clearTimeout($data._fail);
 	$data._fail = addTimeout(function(){
 		$stage.game.display.html($data._char);
-	}, 1800);
+	}, 1800/$data.room.gameSpeed);
 }
 function getScore(id){
 	if($data._replay) return $rec.users[id].game.score;
@@ -3682,16 +3935,16 @@ function roundEnd(result, data){
 		if(!r.reward) continue;
 		
 		r.reward.score = $data._replay ? 0 : Math.round(r.reward.score);
-		lvUp = getLevel(sc = o.data.score) > getLevel(o.data.score - r.reward.score);
+		lvUp = false;
 		
 		$b.append($o = $("<div>").addClass("result-board-item")
 			.append($p = $("<div>").addClass("result-board-rank").html(r.rank + 1))
-			.append(getLevelImage(sc, o.equip).addClass("result-board-level"))
+			.append(getLevelImage(o.level, o.equip).addClass("result-board-level"))
 			.append($("<div>").addClass("result-board-name").html(o.nickname))
 			.append($("<div>").addClass("result-board-score")
 				.html(data.scores ? (L['avg'] + " " + commify(data.scores[r.id]) + L['kpm']) : (commify(r.score || 0) + L['PTS']))
 			)
-			.append($("<div>").addClass("result-board-reward").html(r.reward.score ? ("+" + convert(r.reward.score)) : "-"))
+			.append($("<div>").addClass("result-board-reward").html((r.reward.score ? ("+" + convert(r.reward.score)) : "-")))
 			.append($("<div>").addClass("result-board-lvup").css('display', lvUp ? "block" : "none")
 				.append($("<i>").addClass("fa fa-arrow-up"))
 				.append($("<div>").html(L['lvUp']))
@@ -3699,8 +3952,8 @@ function roundEnd(result, data){
 		);
 		if(o.game.team) $p.addClass("team-" + o.game.team);
 		if(r.id == $data.id){
-			r.exp = o.data.score - r.reward.score;
-			r.level = getLevel(r.exp);
+			r.exp = o.level;
+			r.level = r.exp;
 			$data._result = r;
 			$o.addClass("result-board-me");
 			$(".result-me-expl").append(explainReward(r.reward._score, r.reward._money, r.reward._blog));
@@ -3726,18 +3979,25 @@ function roundEnd(result, data){
 			addp = "<label class='result-me-bonus' style='font-size: 6.5px;'>(+" + commify(addp) + ")</label>";
 		}else addp = "";
 		
+		/*if(new Date().getTime() <= 1617289200000){
+			notice("획득한 경험치: <font color='red'>-" + commify($data._result.reward.score) + "</font>, 획득한 핑: <font color='red'>-" + commify($data._result.reward.money) + "</font>");
+			$(".result-me").css('opacity', 1);
+			$(".result-me-score").html("경험치 <font color='red'>-"+commify($data._result.reward.score)+"</font>");
+			$(".result-me-money").html("핑 <font color='red'>-"+commify($data._result.reward.money)+"</font>");
+		}else{*/
 		notice(L['scoreGain'] + ": " + commify($data._result.reward.score) + ", " + L['moneyGain'] + ": " + commify($data._result.reward.money));
 		$(".result-me").css('opacity', 1);
 		$(".result-me-score").html("경험치 +"+commify($data._result.reward.score)/*+addit*/);
 		$(".result-me-money").html("핑 +"+commify($data._result.reward.money)/*+addp*/);
+		//}
 		if($data._result.isGM) notice('운영자 효과로 경험치, 핑이 2배로 지급되었습니다.');
 	}
 	function roundEndAnimation(first){
 		var v, nl;
 		var going;
 		var findL;
-		$data._result.goal = EXP[$data._result.level - 1];
-		$data._result.before = EXP[$data._result.level - 2] || 0;
+		$data._result.goal = $data.users[$data.id].goal;
+		$data._result.before = $data.users[$data.id].score || 0;
 		/*if(first){
 			$data._result._before = $data._result.before;
 		}*/
@@ -3747,7 +4007,7 @@ function roundEnd(result, data){
 			
 			$data._result.reward.score -= v;
 			$data._result.exp += v;
-			nl = getLevel($data._result.exp);
+			nl = $data.users[$data.id].level;
 			if($data._result.level != nl){
 				$data._result._boing -= $data._result.goal - $data._result._exp;
 				$data._result._exp = $data._result.goal;
@@ -3764,9 +4024,9 @@ function roundEnd(result, data){
 		draw('bonus', going, 0, $data._result.goal - $data._result.before);
 		var gg = $data._result.level > 1000;
 		$(".result-me-level-body").html($data._result.level);
-		var lv = getLevel($data._result.exp);
-		var prev = EXP[lv-2] || 0;
-		$(".result-me-score-text").html($data.opts.rq?commify(Math.round($data._result.exp-prev)) + " / " + commify($data._result.goal-prev):commify(Math.round($data._result.exp)) + " / " + commify($data._result.goal));
+		var lv = $data.users[$data.id].level;/*getLevel($data._result.exp);*/
+		//var prev = EXP[lv-2] || 0;
+		$(".result-me-score-text").html(commify(Math.round($data.users[$data.id].score/*$data._result.exp-prev*/)) + " / " + commify($data.users[$data.id].goal/*$data._result.goal-prev*/));
 	}
 	function draw(phase, val, before, goal){
 		$(".result-me-" + phase + "-bar").width((val - before) / (goal - before) * 100 + "%");
@@ -3849,6 +4109,23 @@ function drawRanking(ranks){
 		}
 	}*/
 }
+function checkJamsu(){
+	clearTimeout($data._JamsuTimer);
+	$(".jamsu-time .graph-bar").css({ width: 0 }).stop().animate({ width: 300 }, 15000, "linear");
+	$data.Jamsu = 16;
+	$data._Jamsu = 16;
+	$data._JamsuTimer = addTimeout(goJamsu, 1);
+}
+function goJamsu(){
+	if(--$data.Jamsu > 0){
+		$data._JamsuTimer = addTimeout(goJamsu, 1000);
+		showDialog($stage.dialog.Jamsu, true);
+	}else{
+		send('jamsu', { value: true }, true);
+		clearTimeout($data._JamsuTimer);
+		$stage.dialog.Jamsu.hide();
+	}
+}
 function kickVoting(target){
 	var op = $data.users[target].profile;
 	
@@ -3878,7 +4155,7 @@ function searchShop(finditem){
 			return fail(res.error);
 		}
 		var my = $data.users[$data.id];
-		var lvl = my.data.score;
+		var lvl = my.level;
 		lvl = getLevel(lvl);
 		var lmt;
 		res.goods.sort(function(a, b){ return b.updatedAt - a.updatedAt; }).forEach(function(item, index, my){
@@ -3894,7 +4171,7 @@ function searchShop(finditem){
 			$body.append($("<div>").attr('id', "goods_" + item._id).addClass("goods")
 				.append($("<div>").addClass("jt-image goods-image").css('background-image', "url(" + url + ")"))
 				.append($("<div>").addClass("goods-title").html(iName(item._id, item)))
-				.append($("<div>").addClass("goods-cost").html(commify(item.cost) + L['ping']))
+				.append($("<div>").addClass("goods-cost").html(convert(item.cost) + L['ping']))
 				.append(explainGoods(item, false))
 			.on('click', onGoods));
 		});
@@ -3904,35 +4181,8 @@ function searchShop(finditem){
 	$("#shop-type-all").addClass("selected");
 }
 /*function loadExc(){
-	var $body = $("#exchange-shelf");
-	$body.html(L['LOADING']);
-	processShop(function(res){
-		$body.empty();
-		if($data.guest) res.error = 423;
-		if(res.error){
-			$stage.menu.shop.trigger('click');
-			return fail(res.error);
-		}
-		var my = $data.users[$data.id];
-		var lvl = my.data.score;
-		lvl = getLevel(lvl);
-		res.goods.sort(function(a, b){ return b.updatedAt - a.updatedAt; }).forEach(function(item, index, my){
-			var url = iImage(false, item);
-			if(item._id == 'CDCoin') return;
-			if(iName(item._id, item) == 0) return;
-			$body.append($("<div>").attr('id', "exchange_" + item._id).addClass("goods")
-				.append($("<div>").addClass("jt-image goods-image").css('background-image', "url(" + url + ")"))
-				.append($("<div>").addClass("goods-title").html(iName(item._id, item)))
-				.append($("<div>").addClass("goods-cost").html(commify(item.cost) + L['ping']))
-				.append(explainGoods(item, false))
-			.on('click', onGoods));
-		});
-		global.expl($body);
-	});
-	$(".shop-type.selected").removeClass("selected");
-	$("#shop-type-all").addClass("selected");
-}*/
-function loadExc(){
+	notice('1주년 이벤트 상점에 입장하셨습니다. 이벤트 상점은 <b>2021년 1월 13일 오후 11시 59분</b>까지 운영됩니다.');
+	$stage.box.shop.show();
 	var $body = $("#shop-shelf");
 	$('.shop-categories').hide();
 	$body.html(L['LOADING']);
@@ -3959,7 +4209,7 @@ function loadExc(){
 			$body.append($("<div>").attr('id', "goods_" + item._id).addClass("goods")
 				.append($("<div>").addClass("jt-image goods-image").css('background-image', "url(" + url + ")"))
 				.append($("<div>").addClass("goods-title").html(iName(item._id, item)))
-				.append($("<div>").addClass("goods-cost").html('태극기 ' + commify(item.evtCost) + '개'))
+				.append($("<div>").addClass("goods-cost").html(commify(item.evtCost) + ' 포인트'))
 				.append(explainGoods(item, false))
 			.on('click', onEvtG));
 		});
@@ -3967,8 +4217,7 @@ function loadExc(){
 	});
 	$(".shop-type.selected").removeClass("selected");
 	$("#shop-type-all").addClass("selected");
-}
-
+}*/
 function loadShop(){
 	var $body = $("#shop-shelf");
 	$('.shop-categories').show();
@@ -3981,8 +4230,8 @@ function loadShop(){
 			return fail(res.error);
 		}
 		var my = $data.users[$data.id];
-		var lvl = my.data.score;
-		lvl = getLevel(lvl);
+		var lvl = my.level;
+		//lvl = getLevel(lvl);
 		res.goods.sort(function(a, b){ return b.updatedAt - a.updatedAt; }).forEach(function(item, index, my){
 			try{
 				if(item.cost < 0 && $data.users[$data.id].equip["STY"] !== "b1_gm") return;
@@ -3996,7 +4245,7 @@ function loadShop(){
 			$body.append($("<div>").attr('id', "goods_" + item._id).addClass("goods")
 				.append($("<div>").addClass("jt-image goods-image").css('background-image', "url(" + url + ")"))
 				.append($("<div>").addClass("goods-title").html(iName(item._id, item)))
-				.append($("<div>").addClass("goods-cost").html(commify(item.cost) + L['ping']))
+				.append($("<div>").addClass("goods-cost").html(convert(item.cost) + L['ping']))
 				.append(explainGoods(item, false))
 			.on('click', onGoods));
 		});
@@ -4005,7 +4254,46 @@ function loadShop(){
 	$(".shop-type.selected").removeClass("selected");
 	$("#shop-type-all").addClass("selected");
 }
-
+function loadTrade(){
+	var $body = $("#trade-shelf");
+	$body.html('거래소 아이템을 가져오는 중... 잠시만 기다려 주세요.');
+	if($data.guest){
+		$stage.menu.trade.trigger('click');
+		return pfAlert('로그인하지 않은 계정은 거래소를 이용할 수 없습니다.');
+	}
+	processTrade(function(res){
+		$body.empty();
+		if($data.guest) res.error = 423;
+		if(res.error){
+			$stage.menu.trade.trigger('click');
+			return fail(res.error);
+		}
+		var my = $data.users[$data.id];
+		res.item.sort(function(a, b){ return b.due - a.due; }).forEach(function(item, index, my){
+			try{
+				if(item.cost < 0 && my.equip["STY"] !== "b1_gm") return;
+			}catch(e){
+				if(item.cost < 0) return;
+			}
+			item.__id = item._id;
+			item._id = item.item;
+			item.group = res.goods[item._id].group;
+			item.options = res.goods[item._id].options;
+			
+			var url = iImage(false, item);
+			if(iName(item._id, item) == 0) return;
+			
+			
+			$body.append($("<div>").attr('id', "trade_" + item._id).addClass("trade")
+				.append($("<div>").addClass("jt-image trade-image").css('background-image', "url(" + url + ")"))
+				.append($("<div>").addClass("trade-title").html(iName(item._id, item)))
+				.append($("<div>").addClass("trade-cost").html(commify(item.cost) + L['ping']))
+				.append(explainGoods(item, false, item.expire ? item.expire / 1000 :  false, true, true))
+			.on('click', onTrade));
+		});
+		global.expl($body);
+	});
+}
 /*function trade(target){
 	if(target.guest) return alert(L['guestTrade']);
 	var notroom = false;
@@ -4051,8 +4339,8 @@ function startEq(){
 	}
 	$("#ed-gexp").html("+" + (a.o * 100).toFixed(2) + "%p");
 	$("#ed-gmny").html("+" + (a.t * 100).toFixed(2) + "%p");
-	$("#ed-hexp").html("+" + a.r);
-	$("#ed-hmny").html("+" + a.f);
+	$("#ed-hexp").html("+" + commify(a.r));
+	$("#ed-hmny").html("+" + commify(a.f));
 	showDialog($stage.dialog.effect);
 }
 function addGoods(id, mode){
@@ -4064,7 +4352,11 @@ function addGoods(id, mode){
 		var k = i.charAt(0);
 		txt = item.options[i];
 		
-		if(k == 'h') return txt;
+		if(k == 'h'){
+			if(i == "hEXP"){
+				return Math.ceil(txt * getLvBonus());
+			}else return txt;
+		}
 		
 		var my = $data.users[$data.id].enhance;
 		if(!my) my = {};
@@ -4078,12 +4370,13 @@ function addGoods(id, mode){
 	}
 	return 0;
 }
-function explainGoods(item, equipped, expire, forDress){
+function explainGoods(item, equipped, expire, forDress, forTrade){
 	var i;
 	var did = false;
 	var tid = false;
+	var xT = {};
 	var $R = $("<div>").addClass("expl dress-expl")
-		.append($("<div>").addClass("dress-item-title").html(iName(item._id, item) + (equipped ? L['equipped'] : "")))
+		.append($("<div>").addClass("dress-item-title").html(iName(item._id, item) + (forTrade && item.enhance && item.enhance > 0 ? "<font style='color: #FFB861;'> (Lv. "+item.enhance+")</font>" : "") + (equipped ? L['equipped'] : "")))
 		.append($("<div>").addClass("dress-item-group").html(L['GROUP_' + item.group]))
 		.append($("<div>").addClass("dress-item-expl").html(iDesc(item._id)));
 	var $opts = $("<div>").addClass("dress-item-opts");
@@ -4094,9 +4387,13 @@ function explainGoods(item, equipped, expire, forDress){
 	for(i in item.options){
 		if(i == "gif") continue;
 		var k = i.charAt(0);
+		var x = i.charAt(1);
 		
 		txt = item.options[i];
-		var my = $data.users[$data.id].enhance;
+		if(forTrade && item.enhance && item.enhance > 0){
+			xT[item._id] = item.enhance;
+		}
+		var my = forTrade ? xT : $data.users[$data.id].enhance;
 		if(!my) my = {};
 		if(my[item._id] && !did && forDress){
 			if(i == "gEXP" || i == "gMNY"){
@@ -4106,8 +4403,11 @@ function explainGoods(item, equipped, expire, forDress){
 			}
 		}
 		if(!tid){
-			if(k == 'g') txt = "+" + (txt * 100).toFixed(2) + "%p";
-			else if(k == 'h') txt = "+" + txt;
+			if(k == 'g') txt = "+" + (txt * 100).toFixed(x == 'D' ? 0 : 2) + "%p";
+			else if(k == 'h'){
+				if(i == "hEXP") txt = "+" + commify(Math.ceil(txt * getLvBonus()));
+				else txt = "+" + txt;
+			}
 		}
 		tid = false;
 		
@@ -4117,6 +4417,43 @@ function explainGoods(item, equipped, expire, forDress){
 	}
 	if(txt) $R.append($opts);
 	return $R;
+}
+function getLvBonus(){
+	try{
+		var level = getLevel($data.users[$data.id].level);
+		if(level >= 2000) return 1;
+		var lvbonus = Math.floor(level/2);
+		if(level>=1000) lvbonus+=Math.floor(((level-1000)/7.5)*360);
+		if(level>=1000&&level<2000) lvbonus+=3000;
+		if(level>=1100) lvbonus+=3600;
+		if(level>=1200) lvbonus+=3600;
+		if(level>=1300) lvbonus+=3600;
+		if(level>=1400) lvbonus+=3600;
+		if(level>=1500) lvbonus+=3600;
+		if(level>=1600) lvbonus+=3600;
+		if(level>=1700) lvbonus+=3600;
+		if(level>=1800) lvbonus+=3600;
+		if(level>=1900) lvbonus+=3600;
+		return 1 + (lvbonus / 5);
+	}catch(e){ return 1; }
+}function getLvBonus(){
+	try{
+		var level = getLevel($data.users[$data.id].level);
+		if(level >= 2000) return 1;
+		var lvbonus = Math.floor(level/2);
+		if(level>=1000) lvbonus+=Math.floor(((level-1000)/7.5)*360);
+		if(level>=1000&&level<2000) lvbonus+=3000;
+		if(level>=1100) lvbonus+=3600;
+		if(level>=1200) lvbonus+=3600;
+		if(level>=1300) lvbonus+=3600;
+		if(level>=1400) lvbonus+=3600;
+		if(level>=1500) lvbonus+=3600;
+		if(level>=1600) lvbonus+=3600;
+		if(level>=1700) lvbonus+=3600;
+		if(level>=1800) lvbonus+=3600;
+		if(level>=1900) lvbonus+=3600;
+		return 1 + (lvbonus / 5);
+	}catch(e){ return 1; }
 }
 function processShop(callback){
 	var i;
@@ -4129,6 +4466,16 @@ function processShop(callback){
 		if(callback) callback(res);
 	});
 }
+function processTrade(cb){
+	var i;
+	$.get("/trade", function(r){
+		$data.trade = {};
+		for(i in r.item){
+			$data.trade[r.item[i]._id] = r.item[i];
+		}
+		if(cb) cb(r);
+	});
+}
 function dressSet(){
 }
 function onEvtG(e){
@@ -4136,15 +4483,14 @@ function onEvtG(e){
 	var $obj = $data.shop[id];
 	var my = $data.users[$data.id];
 	var ping = my.money;
-	var myscore = my.data.score;
+	var myscore = my.level;
 	var bef;
 	try{
-		if(!$data.box.hasOwnProperty('CDCoin')) bef = 0;
-		else bef = $data.box['CDCoin'];
+		if(!my.evtMoney) bef = 0;
+		else bef = my.evtMoney;
 	}catch(e){
 		bef = 0;
 	}
-	console.log(bef);
 	$("#bef").text('현재 재화');
 	$("#aft").text('이후 재화');
 	var after = bef - $obj.evtCost;
@@ -4154,11 +4500,11 @@ function onEvtG(e){
 	
 	if($data.box) if($data.box[id]) spt = L['alreadyGot'] + " " + spt;
 	//showDialog($stage.dialog.purchase, true);
-	$("#purchase-ping-before").html('태극기 ' + commify(bef) + '개');
-	$("#purchase-ping-cost").html('태극기 ' + commify($obj.evtCost) + '개');
+	$("#purchase-ping-before").html(commify(bef) + ' 포인트');
+	$("#purchase-ping-cost").html(commify($obj.evtCost) + ' 포인트');
 	$("#purchase-item-name").html(L[id][0]);
-	$oj = $("#purchase-ping-after").html('태극기 ' + commify(after) + '개');
-	$("#purchase-item-desc").html((after < 0) ? '재화가 부족합니다.' : spt);
+	$oj = $("#purchase-ping-after").html(commify(after) + ' 포인트');
+	$("#purchase-item-desc").html((after < 0) ? '포인트가 부족합니다.' : spt);
 	for(i in my.equip) ceq[i] = my.equip[i];
 	ceq[($obj.group == "Mhand") ? [ "Mlhand", "Mrhand" ][Math.floor(Math.random() * 2)] : $obj.group] = id;
 	if($obj.group.substr(0, 3) == "BDG") ceq["BDG"] = id;
@@ -4186,7 +4532,7 @@ function onGoods(e){
 	var $obj = $data.shop[id];
 	var my = $data.users[$data.id];
 	var ping = my.money;
-	var myscore = my.data.score;
+	var myscore = my.level;
 	var after = ping - $obj.cost;
 	var $oj;
 	var spt = L['surePurchase'];
@@ -4222,10 +4568,56 @@ function onGoods(e){
 		$oj.removeClass("purchase-not-enough");
 	}
 }
+function onTrade(e){
+	var id = $(e.currentTarget).attr('id').slice(6);
+	var $obj = $data.shop[id];
+	var my = $data.users[$data.id];
+	var ping = my.money;
+	var myscore = my.level;
+	var after = ping - $obj.cost;
+	var $oj;
+	var spt = L['surePurchase'];
+	var i, ceq = {};
+	$("#bef").text('현재 핑');
+	$("#aft").text('이후 핑');
+	//if($data.box) if($data.box[id]) spt = L['alreadyGot'] + " " + spt;
+	//showDialog($stage.dialog.purchase, true);
+	$("#purchase-ping-before").html(commify(ping) + L['ping']);
+	$("#purchase-ping-cost").html(commify($obj.cost) + L['ping']);
+	$("#purchase-item-name").html(L[id][0]);
+	$oj = $("#purchase-ping-after").html(commify(after) + L['ping']);
+	$("#purchase-item-desc").html((after < 0) ? L['notEnoughMoney'] : spt);
+	$stage.dialog.purchase.height(205);
+	showDialog($stage.dialog.purchase, true);
+	$data._strade = id;
+	$stage.dialog.evtOK.hide();
+	$stage.dialog.purchaseOK.show();
+	$stage.dialog.purchaseOK.attr('disabled', after < 0);
+	if(after < 0){
+		$oj.addClass("purchase-not-enough");
+	}else{
+		$oj.removeClass("purchase-not-enough");
+	}
+}
 function vibrate(level){
+	var vbDec = 1, temp = 100, shut;
+	if($data.opts && (temp = $data.opts.vv)){
+		if(isNaN(Number(temp))) temp = 100;
+		else{
+			temp = Number(temp);
+			if(temp < 0 || temp > 100){
+				temp = 100;
+			}else{
+				if(temp < 1) shut = true;
+			}
+		}
+	}
+	if(!temp && temp !== 0) temp = 100;
+	temp = temp * 0.01;
 	if(mobile) level = level * 0.25;
 	if(level < 1) return;
-	if(level >= 100) level = 100 + level / 50;
+	//if(level >= 100) level = 100 + level / 50;
+	level *= temp;
 	$("#Middle").css('padding-top', level);
 	addTimeout(function(){
 		$("#Middle").css('padding-top', 0);
@@ -4249,7 +4641,7 @@ function pushDisplay(text, mean, theme, wc){
 	var lang = RULE[mode].lang;
 	var opts = $data.room.opts;
 	var vb = false;
-	if(opts.vblock) vb = true;
+	//if(opts.vblock) vb = true;
 	if(mode == "KEA") lang = text.match(/[ㄱ-ㅎ가-힣ㅏ-ㅣ\s]/) ? 'ko' : 'en';
 	
 	$stage.game.display.empty();
@@ -4281,9 +4673,9 @@ function pushDisplay(text, mean, theme, wc){
 			addTimeout(function($l, snd){
 				var anim = { 'margin-top': 0 };
 				
-				playSound(snd, false, opts.faster, opts.faster2);
+				playSound(snd, false, $data.room.gameSpeed);
 				if($l.html() == $data.mission){
-					if(!$data.opts.ms) playSound('mission', false, opts.faster, opts.faster2);
+					if(!$data.opts.ms) playSound('mission', false, $data.room.gameSpeed);
 					if(!opts.declag) $l.css({ 'color': "#66FF66" });
 					if(!opts.declag) anim['font-size'] = 24;
 					else anim['font-size'] = 20;
@@ -4299,9 +4691,9 @@ function pushDisplay(text, mean, theme, wc){
 		j = "";
 		if(isRev) for(i=0; i<len; i++){
 			addTimeout(function(t){
-				playSound(ta, false, opts.faster, opts.faster2);
+				playSound(ta, false, $data.room.gameSpeed);
 				if(t == $data.mission){
-					if(!$data.opts.ms) playSound('mission', false, opts.faster, opts.faster2);
+					if(!$data.opts.ms) playSound('mission', false, $data.room.gameSpeed);
 					j = opts.declag ? t + j : "<label style='color: #66FF66;'>" + t + "</label>" + j;
 				}else{
 					j = t + j;
@@ -4312,9 +4704,9 @@ function pushDisplay(text, mean, theme, wc){
 		else for(i=0; i<len; i++){
 			addTimeout(function(t){
 				if(t != " ") tLen++;
-				playSound(ta, false, opts.faster, opts.faster2);
+				playSound(ta, false, $data.room.gameSpeed);
 				if(t == $data.mission){
-					if(!$data.opts.ms) playSound('mission', false, opts.faster, opts.faster2);
+					if(!$data.opts.ms) playSound('mission', false, $data.room.gameSpeed);
 					j += opts.declag ? t : "<label style='color: #66FF66;'>" + t + "</label>";
 				}else{
 					j += t;
@@ -4328,7 +4720,7 @@ function pushDisplay(text, mean, theme, wc){
 			addTimeout(function(v){
 				if(isKKT){
 					if(v == 1) return;
-					else playSound('kung', false, opts.faster, opts.faster2);
+					else playSound('kung', false, $data.room.gameSpeed);
 				}
 				(beat ? $stage.game.display.children(".display-text") : $stage.game.display)
 					.css('font-size', 21)
@@ -4336,11 +4728,11 @@ function pushDisplay(text, mean, theme, wc){
 			}, i * tick * 2, i);
 		}
 		if(!opts.declag) addTimeout(pushHistory, tick * 4, text, mean, theme, wc);
-		if(!isKKT && !opts.rightgo) playSound(kkt, false, opts.faster, opts.faster2);
+		if(!isKKT && !opts.rightgo) playSound(kkt, false, $data.room.gameSpeed);
 	}, sg);
 }
 function calculateMoneytoExp(val){
-	var lv = getLevel($data.users[$data.id].data.score);
+	var lv = getLevel($data.users[$data.id].level);
     var wlv = lv;
 	lv = wlv>=1000 ? lv/50 : lv/250;
 	if(wlv>=360) lv += 1;
@@ -4527,7 +4919,7 @@ function bfManlep(plv){
 	var finalscore = psc + asc;
 	return finalscore;
 }*/
-function getRequiredScore(lv){
+/*function getRequiredScore(lv){
 	if(lv <= 0) return 0;
 	var asc = 0;
 	if(lv > 400) asc += lv * 11;
@@ -4536,7 +4928,7 @@ function getRequiredScore(lv){
 	if(lv > 550) asc += lv * 13;
 	if(lv > 600) asc += lv * 11;
 	/*if(lv > 650) asc += lv * 20;
-	if(lv >= 745) asc += lv * 10;*/
+	if(lv >= 745) asc += lv * 10;
 	if(lv == 99) return 435;
 	if(lv <= 99) lv = Math.round(lv * 0.6);
 	if(lv == 999) return 121377;
@@ -4554,18 +4946,33 @@ function getRequiredScore(lv){
 	);
 	var finalscore = psc + asc;
 	return finalscore;
+}*/
+function getPingScore(){
+	var ping_ratio = 0.015, ping_ratio2 = 0.02;
+	PING_EXP.push(10);
+	if(typeof ping_ratio === "number"){
+		// 계속 일정한 %로 상승.
+		for(var i=0; i<MAX_PING_LEVEL; i++){
+			PING_EXP.push(Math.ceil(PING_EXP[i]+(PING_EXP[i]*(PING_EXP.length >= 500 ? ping_ratio2 : ping_ratio))));
+		}
+		PING_EXP.push(Infinity);
+		PING_EXP.push(Infinity);
+	}else{
+		// 아직 안 했다. 구간별 이전 경험치 대비 상승 % 설정 가능.
+	}
 }
 function getLevel(score){
+	return 1;
 	var i, l = EXP.length;
 	
 	for(i=0; i<l; i++) if(score < EXP[i]) break;
 	return i+1;
 }
 function getPL(p){
-	var kls = Math.floor(p / 1000);
-	if(kls > 1000) kls = 1000;
-	if(kls < 1) kls = 1;
-	return kls;
+	var i, l = PING_EXP.length;
+	
+	for(i=0; i<l; i++) if(p < PING_EXP[i]) break;
+	return i+1;
 }
 function getLevelName(l){
 	var n;
@@ -4587,14 +4994,22 @@ function getLevelNameS(l){
 	if(l == 1051) return 'MS';
 	else return getLevelName(l);
 }
-function getLevelImage(score, equip){
+function getLevelImage(level, equip, bot){
 	//var lv = getLevel(score) - 1;
-	var lv = getLevel(score);
+	var lv = level;
 	var lX = (lv % 25) * -100;
 	var lY = Math.floor(lv * 0.04) * -100;
-	if(equip) if(equip["STY"] === "b1_gm") return getImage(cdn + "/img/kkutu/lv/lv_gm.png");
+	if(equip){
+		var es = equip["STY"];
+		if(es == "b1_gm") return getImage("/img/kkutu/lv/lv_gm.png");
+		if(es == "b1_ds") return getImage("/img/kkutu/lv/lv_ds.png");
+		if(es == "b1_wd") return getImage("/img/kkutu/lv/lv_wd.png");
+		if(es == "b1_um") return getImage("/img/kkutu/lv/lv_um.png");
+	}
+	if(bot) return getImage("/img/kkutu/lv/lv_bot.png");
 	//if(iAdmin) return getImage("/img/kkutu/lv/lv_gm.png");
-	return getImage(cdn3 + "/lv" + zeroPadding(lv, 4) + ".png");
+	if(lv <= 2000) return getImage(cdn3 + "/lv" + zeroPadding(lv, 4) + ".png");
+	else return getImage("/img/kkutu/lv/lv" + zeroPadding(lv, 4) + ".png");
 	
 	/*return $("<div>").css({
 		'float': "left",
@@ -4692,6 +5107,7 @@ function loadG(k, url, cb2, cb){
 	function done(){
 		if(--$data._lsRemain <= 0){
 			if(cb) cb();
+			playBGM($data.opts.bg);
 			applyTyping();
 		}//else if($data._lsRemain >= 0) loading(L['loadRemain'] + $data._lsRemain);
 	}
@@ -4743,7 +5159,7 @@ function stopBGM(){
 	}
 }
 function Spec(key, mute){
-	var src, sound;
+	var src = {}, sound;
 	if(!$sound[key]) return null;
 	sound = $sound[key] || $sound.missing;
 	if(window.hasOwnProperty("AudioBuffer") && sound instanceof AudioBuffer){
@@ -4756,7 +5172,7 @@ function Spec(key, mute){
 			src.buffer = sound;
 		}
 		src.connect(audioContext.destination);
-	}else{
+	}else if(sound){
 		if(sound.readyState) sound.audio.currentTime = 0;
 		sound.audio.loop = false;
 		sound.audio.volume = mute ? 0 : 1;
@@ -4773,7 +5189,7 @@ function Spec(key, mute){
 	
 	return src;
 }
-function playSound(key, loop, faster, faster2){
+function playSound(key, loop, speed){
 	var src, sound;
 	//var mute = (loop && $data.muteBGM) || (!loop && $data.muteEff);
 	var mute = false;
@@ -4791,11 +5207,17 @@ function playSound(key, loop, faster, faster2){
 		}
 		var gainNode = src.connect(gNode);
 		gainNode.connect(audioContext.destination);
-	}else{
+	}else if(sound){
 		if(sound.readyState) sound.audio.currentTime = 0;
 		sound.audio.loop = loop || false;
 		sound.audio.volume = mute ? 0 : 1;
 		src = sound;
+	}
+	if(!src){
+		src = { gain: { value: 0 }, playbackRate: { value: 1 } };
+		if(!gainNode) gainNode = {
+			gain: { value: 0 }
+		}
 	}
 	if($_sound[key]) try{$_sound[key].stop();}catch(e){}
 	$_sound[key] = src;
@@ -4804,8 +5226,7 @@ function playSound(key, loop, faster, faster2){
 	sound.loop = loop || false;
 	sound.volume = ((loop && $data.muteBGM) || (!loop && $data.muteEff)) ? 0 : 1;
 	sound.play();*/
-	if(faster) src.playbackRate.value = 2;
-	if(faster2) src.playbackRate.value *= 3;
+	if(speed) src.playbackRate.value = speed;
 	if(loop){
 		if(!$data.BGMV){
 			var teq = $.cookie('vol');
@@ -4847,11 +5268,18 @@ function Playing(aud){
 	return !aud.paused;
 }
 function playBGM(key, force){
+	if($data.room && $data.room.gaming && key.substr(0, 5) != 'jaqwi') return $data.bgm;
 	if($data.bgm){
 		try{$data.bgm.stop();}catch(e){}
 	}
-	$data.bgm = playSound(key, true);
-	$data.bgm.playbackRate.value = $data.opts.bs ? $data.opts.bs : 1;
+	// 방, 방이 게임 중일때 play X, 자음퀴즈일 때에 한해 자퀴음악만 허용.
+	if(!$data.room || ($data.room && (!$data.room.gaming || key.substr(0, 5) == 'jaqwi'))) $data.bgm = playSound(key, true);
+	else{
+		$data.bgmVol = { gain: { value: 1 } };
+		$data.bgm = {playbackRate:{value:1} };
+	}
+	if(key.substr(0, 5) == 'jaqwi') $data.bgm.playbackRate.value = 1; 
+	else $data.bgm.playbackRate.value = $data.opts.bs ? $data.opts.bs : 1;
 	return $data.bgm;
 }
 function stopAllSounds(){
@@ -4940,7 +5368,7 @@ function chat(profile, msg, from, timestamp, rbw){
 	var dt, bt, ut, it, kt;
 	var gst;
 	try{
-		var nicknm = profile.title.charAt() == "→" ? profile.title : $data.users[profile.id].nickname;
+		var nicknm = profile && profile.title && profile.title.charAt() == "→" ? profile.title : $data.users[profile.id].nickname;
 		gst = false;
 	} catch(e){
 		var nicknm = profile.title || profile.name;
@@ -4961,7 +5389,7 @@ function chat(profile, msg, from, timestamp, rbw){
 	var o;
 	if($data.room && !gst){
 		if(!profile){
-			profile = { title: 'anonymous'};
+			profile = { title: 'anonymous' };
 		}else{
 			if(!profile.title) profile.title = 'anonymous';
 		}
@@ -5029,6 +5457,24 @@ function chat(profile, msg, from, timestamp, rbw){
 		dst = dst;
 	}*/
 	if(dst){
+		try{
+			var jss = $data.users[$data.id].nickname + " ";
+			var k = false;
+			var isment = false;
+			msg = msg + " ";
+			$msg.html(msg);
+			var pis;
+			msg = $msg.html() + " ";
+			for(i in $data.users){
+				//if($data.users[i].nickname == $data.users[$data.id].nickname) continue;
+				pis = new RegExp("@" + $data.users[i].nickname + " ", "g");
+				msg = msg.replace(pis, "@" + i + " ");
+			}
+			msg = msg.replace($msg.html() + " ", $msg.html());
+			$msg.html(msg);
+		}catch(e){
+			//console.log(e.toString());
+		}
 		if(dt = msg.match(/~~[^\<\>]+~~/g)){
 			msg = $msg.html();
 			dt.forEach(function(item){
@@ -5064,15 +5510,23 @@ function chat(profile, msg, from, timestamp, rbw){
 			});
 			$msg.html(msg);
 		}
+		if(link = msg.match(/https?:\/\/[\w\.\?\/&#%=\-\_\+]+/g)){
+			if(msg.indexOf('<script>')==-1 || msg.indexOf('<img')==-1){
+				msg = $msg.html();
+				link.forEach(function(item){
+					msg = msg.replace(item, "<a href='#' style='color: #2222FF;' onclick='if(confirm(\"" + L['linkWarning'] + "\")) window.open(\"" + item + "\");'>" + item + "</a>");
+				});
+				$msg.html(msg);
+			}
+		}
 		try{
-			var jss = $data.users[$data.id].nickname + " ";
 			var k = false;
 			var isment = false;
 			msg = msg + " ";
-			if(msg.indexOf('@' + jss)!=-1 && msg.indexOf('<')==-1 && msg.indexOf('>')==-1){
-				var nik = new RegExp("@" + $data.users[$data.id].nickname + " ", "g");
+			if(msg.indexOf('@' + $data.id + " ")!=-1 && msg.indexOf('<')==-1 && msg.indexOf('>')==-1){
+				var nik = new RegExp("@" + $data.id + " ", "g");
 				//var ti = msg.match(nik);
-				msg = msg.replace(nik, "<b><font color='blue' style='background-color: #C2D3FF; border-radius: 2px;'>@" + jss.trim() + "</font></b> ");
+				msg = msg.replace(nik, "<b><font color='blue' style='background-color: #C2D3FF; border-radius: 2px;'>@" + $data.users[$data.id].nickname + "</font> </b> ");
 				msg = msg.trim();
 				isment = true;
 				//msg = msg.replace('@' + jss, "<b><font color='blue'>@" + jss + "</font></b>");
@@ -5083,7 +5537,7 @@ function chat(profile, msg, from, timestamp, rbw){
 			msg = $msg.html() + " ";
 			for(i in $data.users){
 				if($data.users[i].nickname == $data.users[$data.id].nickname) continue;
-				pis = new RegExp("@" + $data.users[i].nickname + " ", "g");
+				pis = new RegExp("@" + i + " ", "g");
 				msg = msg.replace(pis, "<b><font color='blue'>@" + $data.users[i].nickname + "</font></b> ");
 			}
 			msg = msg.replace($msg.html() + " ", $msg.html());
@@ -5141,16 +5595,7 @@ function chat(profile, msg, from, timestamp, rbw){
 				$msg.html(msg);
 			}*/
 		}catch(e){
-			//console.log(e.toString());
-		}
-		if(link = msg.match(/https?:\/\/[\w\.\?\/&#%=\-\_\+]+/g)){
-			if(msg.indexOf('<script>')==-1 || msg.indexOf('<img')==-1){
-				msg = $msg.html();
-				link.forEach(function(item){
-					msg = msg.replace(item, "<a href='#' style='color: #2222FF;' onclick='if(confirm(\"" + L['linkWarning'] + "\")) window.open(\"" + item + "\");'>" + item + "</a>");
-				});
-				$msg.html(msg);
-			}
+			console.log(e.toString());
 		}
 	}
 	if(from){
@@ -5164,7 +5609,7 @@ function chat(profile, msg, from, timestamp, rbw){
 function drawCanvas (data) {
 	route('drawCanvas', data);
 }
-function notice(msg, head){
+function notice(msg, head, color){
 	var time = new Date();
 	
 	playSound('k');
@@ -5173,6 +5618,7 @@ function notice(msg, head){
 		.append($("<div>").addClass("chat-head").text(head || L['notice']))
 		.append($("<div>").addClass("chat-body").html(msg))
 		.append($("<div>").addClass("chat-stamp").text(time.toLocaleTimeString()))
+		.css(color ? { "background-color": color } : { "background-color": "#CCC" })
 	);
 	$stage.chat.scrollTop(999999999);
 	if(head == "tail") console.warn(time.toLocaleString(), msg);
@@ -5242,7 +5688,7 @@ function iImage(key, sObj){
 			return iDynImage(key.slice(1, 4), key.slice(4));
 		}
 	}else if(typeof sObj == "string") sObj = { _id: "def", group: sObj, options: {} };
-	obj = $data.shop[key] || sObj;
+	obj = key ? ($data.shop[key] || sObj) : sObj;
 	gif = obj.options.hasOwnProperty('gif') ? ".gif" : ".png";
 	if(obj._id == 'dizzy_rainbow' && $data.opts.dz) return cdn + "/img/kkutu/moremi/back/def.png";
 	if(obj.group.slice(0, 3) == "BDG") return cdn + "/img/kkutu/moremi/badge/" + obj._id + gif;
@@ -5411,4 +5857,37 @@ function yell(msg){
 			$stage.yell.hide();
 		}, 3000);
 	}, 4300);
+}
+function tryUploadFile(){
+	var Id = $data._reportId;
+	if(!($("input[type='file']")[0] && $("input[type='file']")[0].files && $("input[type='file']")[0].files.length)){
+		return pfAlert('정상적으로 신고되었습니다.');
+	}
+	/*if($("input[type='file']")[0].files.length > 3){
+		pfAlert('파일은 최대 3개까지만 올릴 수 있습니다.');
+	}*/
+	pfAlert('파일 업로드 중... 잠시만 기다려 주세요.');
+	var data = new FormData();
+	$.each($("input[type='file']")[0].files, function(i, f){
+		data.append('report', f);
+	});
+	/*$.post("/upload?id="+Id, data, function(res){
+		console.log(res);
+		if(res.ok) pfAlert('정상적으로 신고되었습니다.');
+		else pfAlert('파일 업로드에 실패하였습니다.<br>파일 크기를 확인 해 주세요.');
+	});*/
+	$.ajax({
+		type: 'POST',
+		url: '/upload?id='+Id,
+		cache: false,
+		contentType: false,
+		processData: false,
+		data: data,
+		success: function(result){
+			if(result.ok) pfAlert('정상적으로 신고되었습니다.');
+		},
+		error: function(err){
+			pfAlert('파일 업로드에 실패하였습니다.');
+		}
+	});
 }
