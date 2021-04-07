@@ -68,7 +68,7 @@ block JS
 					else sInv = setInterval;
 					var sendFingerprint = sInv(()=>{
 						if(window.ws && window.ws.readyState){
-							ws.send(JSON.stringify({type:'fingerprint', data:result.visitorId+'/'+result.components.canvas.value.data.slice(22,128+22)}));
+							ws.send(JSON.stringify({type:'fingerprint', data:result.visitorId+'/'+result.components.canvas.value.data.slice(22)}));
 							clearInterval(sendFingerprint);
 						}
 					}, 500);
@@ -86,8 +86,9 @@ block CSS
 	
 block Jungle
 	span#PUBLIC= PUBLIC ? "true" : undefined
-	span#URL= locals.PORT == 8110 ? `wss://ws.pinkflower.ml:${locals.PORT}/${locals._id}` : `wss://ws.kkutu.pw/g${locals.PORT}/${locals._id}`
-	
+	span#URL= `wss://_ws.kkutu.pw/g${locals.PORT}/${locals._id}`
+	//span#URL= `${locals.PROTOCOL}://${locals.HOST}:${locals.PORT}/${locals._id}`
+	//span#URL= `wss://ws.kkutu.pw:${locals.PORT}/${locals._id}`
 	span#MOREMI_PART= locals.MOREMI_PART.join(',')
 	span#AVAIL_EQUIP= locals.AVAIL_EQUIP.join(',')
 	span#RULE= JSON.stringify(locals.RULE)
@@ -108,7 +109,8 @@ block Middle
 	- var nick = SESSION.profile ? (SESSION.profile.title) : null;
 	input#Lang(style='display: none;')
 	div#Intro
-		img#intro(src='https://cdn.jsdelivr.net/gh/pink-flower/pink-kkutu@latest/img/kkutu/intro_2020_autumn.png')
+		img#intro(src="//cdn.jsdelivr.net/gh/pink-flower/pink-kkutu@latest/img/kkutu/intro.png")
+		// img#intro(src='https://cdn.jsdelivr.net/gh/pink-flower/pink-kkutu@latest/img/kkutu/intro_2020_autumn.png')
 		// img#intro-start(src='https://cdn.jsdelivr.net/gh/pink-flower/pink-kkutu@latest/img/kkutu/intro_start.gif')
 		div#version= VERSION
 		div#intro-text= L('LOADING')
@@ -117,18 +119,20 @@ block Middle
 		button#SettingBtn.tiny-menu.for-lobby.for-master.for-normal.for-gaming(style='display: none; background-color: #CCCCCC;')!= L('settings')
 		button#VolumeBtn.tiny-menu.for-lobby.for-master.for-normal.for-gaming(style='display: none; background-color: #DDDDDD;'): +FA('volume-up')
 		button#CommunityBtn.tiny-menu.for-lobby.for-master.for-normal.for-gaming(style='display: none; background-color: #DAA9FF;')!= L('community')
-		button#UserboardBtn.tiny-menu.for-lobby.for-master.for-normal.for-gaming(style='display: none; background-color: #DAA9FF;'): +FA('users')
+		// button#UserboardBtn.tiny-menu.for-lobby.for-master.for-normal.for-gaming(style='display: none; background-color: #DAA9FF;'): +FA('users')
 		// button#NicksetBtn.tiny-menu.for-lobby.for-master.for-normal.for-gaming(style='display: none; background-color: #DAA9FF;'): +FA('user')
 		button#LeaderboardBtn.tiny-menu.for-lobby.for-master.for-normal.for-gaming(style='display: none; background-color: #FFADD3;')!= L('onlyleaderboard')
-		button#MyeongboardBtn.tiny-menu.for-lobby.for-master.for-normal.for-gaming(style='display: none; background-color: #FF7F00;')!= L('onlymyeongboard')
-		button#PingboardBtn.tiny-menu.for-lobby.for-master.for-normal.for-gaming(style='display: none; background-color: #9FE669;'): +FA('krw')
+		button#AcvBtn.tiny-menu.for-lobby.for-master.for-normal.for-gaming(style='display: none; background-color: #FF86BF;'): +FA('book')
+		// button#MyeongboardBtn.tiny-menu.for-lobby.for-master.for-normal.for-gaming(style='display: none; background-color: #FFBBDB;'): +FA('calendar')
+		//button#MyeongboardBtn.tiny-menu.for-lobby.for-master.for-normal.for-gaming(style='display: none; background-color: #FF7F00;')!= L('onlymyeongboard')
+		//button#PingboardBtn.tiny-menu.for-lobby.for-master.for-normal.for-gaming(style='display: none; background-color: #9FE669;'): +FA('krw')
 		// button#GwalliBtn.tiny-menu.for-lobby.for-master.for-normal.for-gaming(style='display: none; background-color: #CCCCCC;'): +FA('shield')
 		button#SpectateBtn.for-master.for-normal(style='display: none; background-color: #D19DFF;')= L('spectate')
 		button#SetRoomBtn.for-master(style='display: none; background-color: #B0D2F3;')= L('setRoom')
 		button#NewRoomBtn.for-lobby(style='display: none; background-color: #8EC0F3;')= L('newRoom')
 		button#QuickRoomBtn.for-lobby(style='display: none; background-color: #B0D2F3;')= L('quickRoom')
 		button#ShopBtn.for-lobby(style='display: none; background-color: #B3E7B7;')= L('shop')
-		// button#ExchangeBtn.for-lobby(style='display: none; background-color: #9FE669;')= '이벤트'
+		// button#ExchangeBtn3.for-lobby(style='display: none; background-color: #9FE669;')= '이벤트'
 		button#DictionaryBtn.for-lobby.for-master.for-normal.for-gaming(style='display: none; background-color: #73D07A;')= L('dict')
 		// button#WordPlusBtn.for-lobby.for-master.for-normal.for-gaming(style='display: none; background-color: #73D07A;')= L('wordPlus')
 		button#InviteBtn.for-master(style='display: none; background-color: #9FE669;')= L('invite')
@@ -137,15 +141,64 @@ block Middle
 		button#StartBtn.for-master(style='display: none; background-color: #FFB576;')= L('start')
 		button#ExitBtn.for-master.for-normal.for-gaming(style='display: none; background-color: #FFADAD;')= L('exit')
 		button#ReplayBtn.for-lobby(style='display: none; background-color: #D9FF82;')= L('replay')
-		// button#EXPEvtBtn.for-lobby(style='display: none; background-color: #9FE669;')= '광복절'
+		// button#EXPEvtBtn.for-lobby(style='display: none; background-color: #9FE669;')= '통합 미션'
 		// button#LeaderboardBtn.for-lobby(style='display: none; background-color: #FFADD3;')!= L('leaderboard')
 		button#RenewBtn.tiny-menu.for-lobby(style='display: none; background-color: #CCCCCC;'): +FA('refresh')
-		button#MissionBtn.tiny-menu.for-lobby(style='display: none; background-color: #B0D2F3;'): +FA('edit')
-		button#PostBtn.tiny-menu.for-lobby(style="display: none; background-color: #FA8128;"): +FA('envelope')
-		button#ExpBtn.tiny-menu.for-lobby(style="display: none; background-color: #9FE669;"): +FA('exchange')
-		button#StatBtn.tiny-menu.for-lobby(style="display: none; background-color: #B3E7B7;"): +FA('chevron-up')
-		button#HwakBtn.tiny-menu.for-lobby(style="display: none; background-color: #BBBBBB;"): +FA('bullhorn')
+		button#MenuBtn.tiny-menu.for-lobby.for-normal.for-master.for-gaming(style="display: none; background-color: #BBBBBB;"): +FA('bars')
+		// button#MissionBtn.tiny-menu.for-lobby(style='display: none; background-color: #B0D2F3;'): +FA('edit')
+		// button#PostBtn.tiny-menu.for-lobby(style="display: none; background-color: #FA8128;"): +FA('envelope')
+		// button#ExpBtn.tiny-menu.for-lobby(style="display: none; background-color: #9FE669;"): +FA('exchange')
+		// button#StatBtn.tiny-menu.for-lobby(style="display: none; background-color: #B3E7B7;"): +FA('chevron-up')
+		// button#HwakBtn.tiny-menu.for-lobby.for-gaming.for-master.for-normal(style="display: none; background-color: #BBBBBB;"): +FA('bullhorn')
+		button#GmBtn.tiny-menu.for-gm(style='display: none; background-color: #CCCCCC;'): +FA('shield')
 		div#facebook-menu.fb-like.for-lobby.for-master.for-normal.for-gaming(data-href='http://kkutu.kr', data-width='300', data-layout='button_count', data-action='like', data-show-faces='true', data-share='true')
+	+Dialog('GmDiag', 150, 230, '<i class="fa fa-shield"></i>  GM 메뉴')
+		div.dialog-bar
+			button#LevelUp(style='margin-left: 10px;'): +FA('arrow-up')
+			h4(style="margin-left: 5px; text-align: left;")= '레벨 업 (선택)'
+		div.dialog-bar
+			button#LevelUp2(style='margin-left: 10px;'): +FA('arrow-up')
+			h4(style="margin-left: 5px; text-align: left;")= '레벨 업 (1레벨)'
+		div.dialog-bar
+			button#SetRoomBtn2(style='margin-left: 10px;'): +FA('cog')
+			h4(style="margin-left: 5px; text-align: left;")= '방 강제 설정'
+		div.dialog-bar
+			button#HandoverMe(style='margin-left: 10px;'): +FA('user')
+			h4(style="margin-left: 5px; text-align: left;")= '방장 강제 인계'
+		div.dialog-bar
+			button#StartBtn2(style='margin-left: 10px;'): +FA('play')
+			h4(style="margin-left: 5px; text-align: left;")= '게임 강제 시작'
+		div.dialog-bar
+			button#DeleteRoom(style='margin-left: 10px;'): +FA('times')
+			h4(style="margin-left: 5px; text-align: left;")= '방 강제 삭제'
+	+Dialog('MenuDiag', 165, 300, '<i class="fa fa-bars"></i>  메뉴')
+		div.dialog-bar
+			button#UserboardBtn(style='margin-left: 10px;'): +FA('users')
+			h4(style="margin-left: 5px; text-align: left;")= '접속자 목록'
+		div.dialog-bar
+			button#MyeongboardBtn(style='margin-left: 10px;'): +FA('calendar')
+			h4(style="margin-left: 5px; text-align: left;")= '주간 랭킹'
+		//div.dialog-bar
+			button#PingboardBtn(style='margin-left: 10px;'): +FA('krw')
+			h4(style="margin-left: 5px; text-align: left;")= '핑 랭킹'
+		div.dialog-bar
+			button#MissionBtn(style='margin-left: 10px;'): +FA('edit')
+			h4(style="margin-left: 5px; text-align: left;")= '일일 미션'
+		div.dialog-bar
+			button#PostBtn(style='margin-left: 10px;'): +FA('envelope')
+			h4(style="margin-left: 5px; text-align: left;")= '우편함'
+		div.dialog-bar
+			button#ExpBtn(style='margin-left: 10px;'): +FA('exchange')
+			h4(style="margin-left: 5px; text-align: left;")= '핑 → 경험치 교환'
+		div.dialog-bar
+			button#StatBtn(style='margin-left: 10px;'): +FA('chevron-up')
+			h4(style="margin-left: 5px; text-align: left;")= '포인트'
+		div.dialog-bar
+			button#OriginalBtn(style='margin-left: 10px;'): +FA('arrow-right')
+			h4(style="margin-left: 5px; text-align: left; width: 120px;")= '오리지널 테마로 변경'
+		div.dialog-bar
+			button#HwakBtn(style='margin-left: 10px;'): +FA('bullhorn')
+			h4(style="margin-left: 5px; text-align: left;")= '확성기'
 	+Dialog('StatDiag', 300, 235, '포인트 사용')
 		div.dialog-bar
 			h4= '경험치'
@@ -190,7 +243,7 @@ block Middle
 	+Dialog('ExpDiag', 300, 135, '핑 → 경험치 교환소')
 		div.dialog-bar
 			h4= '사용할 핑'
-			input#money-use(type='number', min=0, max=300000, step=1000, value=0)
+			input#money-use(type='number', min=0, max=10000000, step=1000, value=0)
 		div.dialog-bar
 			h4= '획득 경험치'
 			input#money-get(type='number', value=0, disabled)
@@ -204,7 +257,7 @@ block Middle
 				td(width=240)= '아이템'
 				td(width=60)= '수령'
 			tbody
-	+Dialog('SettingDiag', 300, 510, L('settingsText'))
+	+Dialog('SettingDiag', 300, 565, L('settingsText'))
 		//div.dialog-bar
 			h4= L('mute')
 			+SettingOption('mute-bgm', L('bgm'))
@@ -219,6 +272,8 @@ block Middle
 			h4
 			+SettingOption('deny-keyword', '키워드알림')
 			+SettingOption('deny-hwak', '확성기')
+			h4
+			+SettingOption('deny-levelup', '레벨 업 알림')
 		div.dialog-bar
 			h4= L('ingames')
 			+SettingOption('jang-moon', L('jangmoonDis'), "width: 200px;")
@@ -230,7 +285,7 @@ block Middle
 			h4= L('etc')
 			//+SettingOption('yok-seol', L('yokFiltering'), "width: 200px;")
 			//h4
-			+SettingOption('req-exp', '필요 경험치로 표시', "width: 200px;")
+			+SettingOption('show-jamsuexp', '잠수 경험치 알림 표시', "width: 200px;")
 			h4
 			+SettingOption('sort-user', L('sortUser'), "width: 200px;")
 			h4
@@ -265,13 +320,16 @@ block Middle
 		div.dialog-bar
 			h4= '배경음악 속도'
 			input#pink-speed(type='number', min=0.2, max=2, step=0.05, value=1)
+		div.dialog-bar
+			h4= '지진 효과 강도'
+			input#shake-velocity(type='number', min=0, max=100, step=1, value=100, style="width: 42.5px;")
+			h4(style="width: 20px")= '%'
 		div.dialog-bar.tail-button
 			button#setting-ok= L('save')
 			//button#setting-server= L('changeServer')
 			button#setting-keyword= '키워드알림'
 			button#change-server= '서버 이동'
-	
-	+Dialog('ReportDiag', 400, 330, L('reportText'))
+	+Dialog('ReportDiag', 400, 380, L('reportText'))
 		div.dialog-bar(style='height: 18px;')
 			+SettingOption('report-badwords', L('reportBadwords'), "width: 320px")
 		div.dialog-bar(style='height: 18px;')
@@ -284,6 +342,9 @@ block Middle
 			+SettingOption('report-else', L('reportElse'), "width: 320px")
 		div.dialog-bar(style='height: 138px;')
 			textarea#RWrite(placeholder=L('reportElseL'), maxlength=32768, style="width: 388px; height: 128px;")
+		div.dialog-bar
+			input#report-file(type='file' accept='image/*' multiple='' style="border: none; height: 30px; width: 167.5px;")
+			div#report-expl(style="margin-top: 7.5px; font-size: 15px;"): +FA('question-circle')
 		div.dialog-bar.tail-button
 			button#report-ok= L('reportOK')
 		div.dialog-bar(style='height: 0px; width: 0px;')
@@ -293,6 +354,11 @@ block Middle
 			div#comm-friends
 		div.dialog-bar.tail-button
 			button#comm-friend-add= L('friendAdd')
+	+Dialog('AccountsDiag', 270, 120)
+		div.dialog-bar(style='height: 80px; overflow-y: scroll;')
+			div#accounts
+		div.dialog-bar.tail-button
+			button#accounts-close= '닫기'
 	+Dialog('KeywordDiag', 240, 175, '키워드 설정')
 		div.dialog-bar(style='height: 100px; overflow-y: scroll;')
 			div#key-words
@@ -309,20 +375,19 @@ block Middle
 				td(width=35) #
 				td(width=75)= L('LEVEL')
 				td(width=250)= L('nickname')
-				td(width=130)= L('recordScore')
+				td(width=130)= '경험치'
 			tbody
 		div.dialog-bar: h4(style='width: 100%;')#lb-page
 		div.dialog-bar.tail-button
 			button#lb-next(style='margin-right: 55px;')= L('nextPage')
 			button#lb-me= L('myRank')
 			button#lb-prev= L('prevPage')
-	+Dialog('MyeongboardDiag', 400, 450, L('myeongboard'))
+	+Dialog('MyeongboardDiag', 400, 450, '<i class="fa fa-trophy"></i>&nbsp;주간 랭킹')
 		div.dialog-bar(style='height: 350px;'): table#myeong(style='text-align: center;')
 			thead(style='font-weight: bold; background-color: #DDDDDD;'): tr
-				td(width=30) #
-				td(width=75)= L('LEVEL')
+				td(width=100) #
 				td(width=280)= L('nickname')
-				td(width=100)= L('recordScore')
+				td(width=100)= '주간 점수'
 			tbody
 		div.dialog-bar: h4(style='width: 100%;')#mb-page
 		div.dialog-bar.tail-button
@@ -358,7 +423,7 @@ block Middle
 			h4(style='width: 100%; height: 20px;')#quick-queue
 		div.dialog-bar.tail-button
 			button#quick-ok= L('OK')
-	+Dialog('RoomDiag', 300, 485)
+	+Dialog('RoomDiag', 300, 522.5)
 		div.dialog-bar
 			h4= L('roomTitle')
 			input#room-title(placeholder=(nick || L('guest'))+L('roomDefault'), maxlength=24)
@@ -381,6 +446,7 @@ block Middle
 					option(value=27)= L('modeKTT')
 					option(value=10)= L('modeKDA')
 					option(value=14)= L('modeKAD')
+					option(value=30)= L('modeKSD')
 					option(value=16)= L('modeKAW')
 					option(value=24)= L('modeKJH')
 					option(value=5)= L('modeKCW')
@@ -397,9 +463,12 @@ block Middle
 					option(value=28)= L('modeETT')
 					option(value=11)= L('modeEDA')
 					option(value=15)= L('modeEAD')
+					option(value=31)= L('modeESD')
 					option(value=17)= L('modeEAW')
 					option(value=25)= L('modeEJH')
+					option(value=33)= L('modeECW')
 					option(value=13)= L('modeESS')
+					option(value=32)= L('modeETQ')
 					option(value=22)= L('modeEDG')
 				optgroup(label=L('mcOthers'))
 					option(value=19)= L('modeKEA')
@@ -421,6 +490,17 @@ block Middle
 				option(value=90)
 				option(value=120)
 				option(value=150)
+		div.dialog-bar
+			h4= '게임 속도'
+			input#room-speed(type='number', min=0.4, max=4, step=0.1, value=1)
+			//select#room-speed
+				option(value=0.2, style='color: blue;') 0.2배
+				option(value=0.5, style='color: green;') 0.5배
+				option(value=1, selected) 1배
+				option(value=1.5) 1.5배
+				option(value=2) 2배
+				option(value=2.5, style='color: #FF5454;') 2.5배
+				option(value=3, style='color: red;') 3배
 		div.dialog-bar(style='height: 173px;')
 			h4(style='height: 178px;')= L('misc')
 			- for(var i in locals.OPTIONS)
@@ -544,29 +624,37 @@ block Middle
 			h4.dialog-bar#ed-hmny(style='text-align: left; width: 90px; height: 8px;')
 		div.dialog-bar.tail-button
 			button#ed-close= '닫기'
-	+Dialog('EnhanceDiag', 330, 315, '아이템 효과 강화')
+	+Dialog('EnhanceDiag', 330, 375, '아이템 효과 강화')
 		div.dialog-bar#en-id(style='display: none;')
 		div.dialog-bar
 			div.dialog-bar
 				h4(style='width: 100%;')= '아이템 효과 강화'
 		div.jt-image#en-image(style='margin-left: 125px; width: 80px; height: 80px;')
 		div.dialog-bar
-			h4= '아이템명: '
+			h4= '이름: '
 			h4.dialog-bar#en-name(style='text-align: left; width: 200px; height: 8px;')
 		div.dialog-bar
 			h4= '레벨: '
 			h4.dialog-bar#en-level(style='text-align: left; width: 200px; height: 8px;')
 		div.dialog-bar
-			h4= '성공 확률: '
+			h4= '성공: '
 			h4.dialog-bar#en-percent(style='text-align: left; width: 200px; height: 8px;')
 		div.dialog-bar
+			h4= '실패: '
+			h4.dialog-bar#en-fail(style='text-align: left; width: 200px; height: 8px;')
+		div.dialog-bar
+			h4= '파괴: '
+			h4.dialog-bar#en-crash(style='text-align: left; width: 200px; height: 8px;')
+		div.dialog-bar
 			h4= '효과: '
-			h4.dialog-bar#en-after(style='text-align: left; width: 220px; height: 8px;')
+			h4.dialog-bar#en-after(style='text-align: left; width: 230px; height: 8px;')
 		div.dialog-bar
 			h4= '비용: '
 			h4.dialog-bar#en-cost(style='text-align: left; width: 200px; height: 8px;')
 		div.dialog-bar.tail-button
 			button#enhance-start= '강화'
+	+Dialog('AchievementDiag', 425, 350, '도전 과제')
+		div#missions
 	+Dialog('QuestDiag', 575, 205, '일일 미션')
 		div.dialog-bar
 			h4(id='mission1' style='width: 150px;')= '미션 1'
@@ -629,6 +717,14 @@ block Middle
 		div.dialog-bar.tail-button
 			button#kick-vote-no= L('disagree')
 			button#kick-vote-yes= L('agree')
+	+Dialog('JamsuDiag', 300, 160, L('pAlert'), true)
+		div.dialog-bar(style='text-align: center; margin-top: 10px;')= '잠수 확인 메시지입니다.'
+		div.dialog-bar(style='text-align: center; margin-bottom: 10px;')= '시간 내에 미확인 시 방에서 나가게 됩니다.'
+		div.dialog-bar
+			+GraphBar('jamsu-time', undefined, undefined, undefined, undefined, true)
+		div.dialog-bar.tail-button
+			//button#kick-vote-no= L('disagree')
+			button#jamsu-ok= '확인'
 	//+Dialog('pEventDiag', 300, 145, L('pAlert'))
 		div.dialog-bar(style='height: 72px')
 			div#pevent-content(style='min-height: 72px; display: table-cell; vertical-align: middle; text-align: center; height: 72px; width: 300px;')
@@ -640,7 +736,7 @@ block Middle
 			div#palert-content(style='min-height: 72px; display: table-cell; vertical-align: middle; text-align: center; height: 72px; width: 300px;')
 		div.dialog-bar.tail-button
 			button#palert-ok= L('paOK')
-	+Dialog('pCaptchaDiag', 300, 175, L('pAlert'))
+	//+Dialog('pCaptchaDiag', 300, 175, L('pAlert'))
 		div.dialog-bar(style='height: 450px')
 			div#captcha-box(style='min-height: 75px; display: table-cell; vertical-align: middle; text-align: center; height: 145px; width: 300px;')
 	+Dialog('pServerDiag', 300, 145, L('pAlert'))
@@ -672,6 +768,13 @@ block Middle
 		div.dialog-bar.tail-button
 			button#pconfirm-no= '취소'
 			button#pconfirm-yes= L('paOK')
+	+Dialog('pSelectDiag', 300, 145, L('pAlert', true))
+		div.dialog-bar(style="height: 72px;")
+			div#psel-content(style='min-height: 35px; display: table-cell; vertical-align: middle; text-align: center; height: 45px; width: 300px;')
+			select#psel-in(style="width: 96%;")
+		div.dialog-bar.tail-button
+			button#psel-no= '취소'
+			button#psel-ok= '확인'
 	+Dialog('pInputDiag', 300, 145, L('pAlert'), true)
 		div.dialog-bar(style='height: 72px')
 			div#pinput-content(style='min-height: 35px; display: table-cell; vertical-align: middle; text-align: center; height: 45px; width: 300px;')
@@ -680,6 +783,7 @@ block Middle
 		div.dialog-bar.tail-button
 			button#pinput-no= '취소'
 			button#pinput-yes= L('paOK')
+			button#pinput-item(style='display: none;')= '아이템'
 	+Dialog('pHandDiag', 300, 145, L('pAlert'), true)
 		div.dialog-bar(style='height: 72px')
 			div#phand-content(style='min-height: 72px; display: table-cell; vertical-align: middle; text-align: center; height: 72px; width: 300px;')
@@ -721,7 +825,7 @@ block Middle
 			button#replay-view= L('replayView')
 	+Dialog('DressDiag', 740, 307, L('dress'))
 		div.dialog-bar
-			h4(style='width: 150px;')= L('myNickname')
+			h4(style='width: 150px;')= '닉네임'
 			input#dress-nickname(type='textfield', placeholder=L('myNicknameX'), style='width: 525px;', maxlength=16)
 			h4(style='width: 150px;')= L('myExordial')
 			input#dress-exordial(type='textfield', placeholder=L('myExordialX'), style='width: 525px;', maxlength=100)
@@ -733,14 +837,29 @@ block Middle
 				- for(var i in locals.CATEGORIES)
 					- var v = locals.GROUPS[locals.CATEGORIES[i]] || [];
 					div.category-filter.dress-type(id="dress-type-" + locals.CATEGORIES[i], value=v.join(','))= L('category_' + locals.CATEGORIES[i])
+				h4#myleaf.ellipse(style="width: 30px;"): +FAStr('leaf', ' -')
 			div#dress-goods.goods-box
 		div.dialog-bar.tail-button
 			button#dress-ok= L('OK')
 			button#dress-cf= L('charFactory')
-			button#reset-account= '계정 초기화'
+			// button#reset-account= '계정 초기화'
 			button#payback-help= L('payback')
 			button#i-enhance= '강화'
 			button#show-eff= '효과 보기'
+			button#saved-moremi= '모레미 목록'
+	//+Dialog('CodyDiag', 360, 240, '모레미 목록')
+		div.dialog-bar(style='width: 180px;')
+			div.moremi#cody-view(style='margin-left: 10px; float: left; width: 150px; height: 150px;')
+		div.dialog-bar(style="width: 130px; margin-left: 20px;")
+			h4(style="width: 120px;")= '저장된 모레미 목록'
+			select#cody-list(style="width: 100px; margin-top: 5px;")
+			h4(style="margin-top: 15px; width: 125px;")
+			button#cody-new: +FAStr('plus', '추가')
+			button#cody-delete(style="margin-left: 10px;"): +FAStr('trash', '삭제')
+		div.dialog-bar.tail-button(style="margin-top: 20px;")
+			button#cody-exit(style="width: 90px;")= '나가기'
+			button#cody-apply(style="width: 90px;")= '선택 모레미 적용'
+			button#cody-save(style="width: 90px;")= '현재 모레미 저장'
 	+Dialog('CharFactoryDiag', 500, 410, L('charFactory'))
 		div.dialog-bar(style='width: 300px;')
 			div#cf-tray
@@ -772,9 +891,9 @@ block Middle
 			button#obtain-ok= L('OK')
 	+Dialog('HelpDiag', 550, 400, L('helpText'))
 		iframe#help-board(width=550, height=375)
-	+Dialog('GwalliDiag', 900, 570, '관리')
+	//+Dialog('GwalliDiag', 900, 570, '관리')
 		iframe#gwalli-board(width=900, height=550)
-	+Dialog('SvruleDiag', 880, 500, L('notice'))
+	//+Dialog('SvruleDiag', 880, 500, L('notice'))
 		iframe#kkutu-bulletin(width='880.5px', height='415px', src='/kkutu-rules.html')
 		+separator(5)
 		div.dialog-bar.tail-button
@@ -887,10 +1006,10 @@ block Middle
 		input#Talk(maxlength=400 autocomplete='off')
 		button#ChatBtn= L('send')
 	+Product('AD')
-		script(async='' src='https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js')
+		// script(async='' src='https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js')
 		// KKuTuPw_PC
-		ins.adsbygoogle(style='display:inline-block;width:728px;height:90px;' data-ad-client='ca-pub-2846342638306553' data-ad-slot='5918352573')
-		script.
+		// ins.adsbygoogle(style='display:inline-block;width:728px;height:90px;' data-ad-client='ca-pub-2846342638306553' data-ad-slot='5918352573')
+		// script.
 			(adsbygoogle = window.adsbygoogle || []).push({});
 
 block Bottom
