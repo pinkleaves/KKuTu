@@ -24,7 +24,7 @@ var JLog	 = require("../sub/jjlog");
 var Collection = require("../sub/collection");
 var Pub = require("../sub/checkpub");
 var Lizard = require("../sub/lizard");
-
+var RedisConfig = { host: '127.0.0.1', port: 6379, password: GLOBAL.REDIS_PASSWORD };
 const FAKE_REDIS_FUNC = () => {
 	var R = new Lizard.Tail();
 
@@ -40,7 +40,7 @@ const FAKE_REDIS = {
 };
 
 Pub.ready = function(isPub){
-	var Redis	 = require("redis").createClient();
+	var Redis	 = require("redis").createClient(RedisConfig);
     var Pg = new PgPool({
         user: GLOBAL.PG_USER,
         password: GLOBAL.PG_PASSWORD,
@@ -72,9 +72,12 @@ Pub.ready = function(isPub){
 			DB.kkutu_cw = {};
 			DB.kkutu_manner = {};
 			
-			DB.redis = noRedis ? FAKE_REDIS : new redisAgent.Table("KKuTu_Score");
-			DB.myeong = noRedis ? FAKE_REDIS : new redisAgent.Table("KKuTu_Myeong");
-			DB.ping = noRedis ? FAKE_REDIS : new redisAgent.Table("KKuTu_Ping");
+			DB.redis = noRedis ? FAKE_REDIS : new redisAgent.Table(GLOBAL.REDIS_SCORE);
+			DB.myeong = noRedis ? FAKE_REDIS : new redisAgent.Table(GLOBAL.REDIS_MYEONG);
+			DB.ping = noRedis ? FAKE_REDIS : new redisAgent.Table(GLOBAL.REDIS_PING);
+			DB.weekly = noRedis ? FAKE_REDIS : new redisAgent.Table(GLOBAL.REDIS_WEEKLY);
+			DB.redis2 = noRedis ? FAKE_REDIS : new redisAgent.Table(GLOBAL.REDIS_RANK);
+			
 			for(i in LANG){
 				DB.kkutu[LANG[i]] = new mainAgent.Table("kkutu_"+LANG[i]);
 				DB.kkutu_cw[LANG[i]] = new mainAgent.Table("kkutu_cw_"+LANG[i]);
@@ -84,11 +87,17 @@ Pub.ready = function(isPub){
 			DB.kkutu_shop = new mainAgent.Table("kkutu_shop");
 			DB.kkutu_shop_desc = new mainAgent.Table("kkutu_shop_desc");
 			
+			DB.trade = new mainAgent.Table("trade");
+			
+			DB.acv = new mainAgent.Table("acv");
+			DB.uacv = new mainAgent.Table("uacv");
+			
 			DB.session = new mainAgent.Table("session");
 			DB.users = new mainAgent.Table("users");
 			DB.evt = new mainAgent.Table("evtstatus");
-			
+			DB.weekly2 = new mainAgent.Table("weekly");
 			DB.iauth = new mainAgent.Table("ipauth");
+			DB.enhance = new mainAgent.Table("enhance");
 			
 			if(exports.ready) exports.ready(Redis, Pg);
 			else JLog.warn("DB.onReady was not defined yet.");
